@@ -1,0 +1,151 @@
+---
+title: 'Set up PRMS for local development'
+description: 'Install Node.js 20 and MySQL 8, clone the PRMS monorepo, configure environment variables for both packages, and run the backend and frontend locally.'
+keywords: ['local development', 'setup', 'install', 'environment', 'NestJS', 'Angular', 'Docker']
+---
+
+Getting PRMS running locally requires the backend (NestJS + MySQL) and the frontend (Angular) to both be configured and started. This guide walks through every step, from cloning the monorepo to opening Swagger in your browser.
+
+## Prerequisites
+
+Before you begin, ensure the following are available on your machine:
+
+| Tool | Version | Required for |
+|---|---|---|
+| Node.js | 20.x | Both backend and frontend |
+| npm | Bundled with Node.js | Package management |
+| MySQL | 8.x | Backend database |
+| Docker | Any recent version | Optional: containerised runs |
+| AWS CLI + Serverless Framework | Latest | Optional: Lambda deploys only |
+
+<Note>
+Node.js 20.x is the version used in the Docker image and AWS Lambda runtime. Using a different major version may cause unexpected build or runtime differences.
+</Note>
+
+## Clone and install
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/AllianceBioversityCIAT/onecgiar_pr.git
+    cd onecgiar_pr
+    ```
+  </Step>
+
+  <Step title="Install root dependencies and set up Git hooks">
+    The root `package.json` installs Husky, which wires pre-commit lint checks for the entire monorepo.
+
+    ```bash
+    npm ci && npm run prepare
+    ```
+  </Step>
+
+  <Step title="Install backend dependencies">
+    ```bash
+    cd onecgiar-pr-server && npm ci && cd ..
+    ```
+  </Step>
+
+  <Step title="Install frontend dependencies">
+    ```bash
+    cd onecgiar-pr-client && npm ci && cd ..
+    ```
+  </Step>
+</Steps>
+
+## Configure environment variables
+
+Both apps read configuration from environment variables. Neither ships a committed `.env` file.
+
+<Warning>
+Never commit `.env` files or paste tokens, passwords, webhook URLs, or any credentials into source code, logs, or documentation. Secrets belong in environment variables, AWS Secrets Manager, or GitHub Secrets. This is a hard, project-wide rule enforced by `.cursorrules`.
+</Warning>
+
+### Backend: `onecgiar-pr-server/.env`
+
+Create `.env` inside `onecgiar-pr-server/` with at minimum the following keys (mirror values from your local MySQL instance and team-shared secrets):
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | HTTP port (default: `3000`) |
+| `DB_HOST` | MySQL host (e.g., `localhost`) |
+| `DB_PORT` | MySQL port (default: `3306`) |
+| `DB_NAME` | Database name |
+| `DB_USER_NAME` | Database user |
+| `DB_USER_PASS` | Database password |
+| `JWT_SKEY` | JWT signing secret |
+| `JWT_EXPIRES` | JWT expiry duration |
+
+Additional keys are required for optional integrations:
+
+- **RabbitMQ**: `RABBITMQ_URL`, `REPORTING_METADATA_EXPORT_QUEUE`
+- **AWS**: S3, DynamoDB, and Cognito credentials
+- **Active Directory (LDAP)**: AD host and bind credentials
+- **CLARISA**: catalog service URL and credentials
+- **MQAP**: external knowledge-product attribute service
+
+### Frontend: `onecgiar-pr-client/src/environments/environment.ts`
+
+The Angular environment file is not a `.env` file — it is a TypeScript module that sets:
+
+- `apiBaseUrl` — points to the running backend (e.g., `http://localhost:3000/`)
+- Cognito client configuration
+- Pusher application key and cluster
+
+<Note>
+The Angular interceptor (`src/app/shared/interceptors/general-interceptor.service.ts`) automatically attaches the custom `auth: <JWT>` header to every API request. You do not set this header manually.
+</Note>
+
+## Run locally
+
+<Steps>
+  <Step title="Start the backend">
+    ```bash
+    cd onecgiar-pr-server
+    npm run start:dev
+    ```
+
+    The server starts on the port defined by `env.PORT` (default `3000`) with auto-reload on file changes. Swagger is available at [http://localhost:3000/api](http://localhost:3000/api).
+  </Step>
+
+  <Step title="Start the frontend">
+    ```bash
+    cd onecgiar-pr-client
+    npm start
+    ```
+
+    Angular CLI serves the app at [http://localhost:4200](http://localhost:4200).
+  </Step>
+</Steps>
+
+## Docker alternatives
+
+If you prefer not to install Node.js and MySQL directly, both apps have Docker support.
+
+<CodeGroup>
+```bash backend
+cd onecgiar-pr-server
+docker build -t prms-server .
+docker run --env-file .env -p 3000:3000 prms-server
+```
+
+```bash frontend
+cd onecgiar-pr-client
+docker build -t prms-client .
+docker run -p 8080:80 prms-client
+```
+</CodeGroup>
+
+The backend `Dockerfile` is a multi-stage Node 20 Alpine build (`base → development | production`). Use the production stage for image builds. The frontend container serves the compiled static SPA through Nginx on port 80.
+
+<Warning>
+The Docker `--env-file` flag reads your local `.env` at runtime. The `.env` file itself must never be committed to the repository or included in the Docker image.
+</Warning>
+
+## Verify the setup
+
+Once both services are running, confirm the setup:
+
+1. Open [http://localhost:3000/api](http://localhost:3000/api) — Swagger UI should load and list all API routes.
+2. Open [http://localhost:4200](http://localhost:4200) — the PRMS login screen should appear.
+3. Sign in using your CGIAR credentials (Cognito or Active Directory, depending on your environment configuration).

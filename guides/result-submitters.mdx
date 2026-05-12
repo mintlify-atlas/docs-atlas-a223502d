@@ -1,0 +1,223 @@
+---
+title: 'Result submitters guide for PRMS reporting'
+description: 'Step-by-step instructions for Initiative and Center staff to create, fill, and submit results in PRMS, from evidence attachment to QA resolution.'
+keywords: ['result submission', 'evidence', 'ToC alignment', 'partners', 'DAC scores', 'CGIAR', 'PRMS']
+---
+
+Result submitters are Initiative and Center staff responsible for capturing reportable results in PRMS. Your work takes a result from an empty form through evidence attachment, Theory of Change (ToC) alignment, partner attribution, and geographic scoping — all the way to a QA-ready submission. This guide walks you through every step of that journey.
+
+## Creating a result
+
+When you are ready to log a new result, navigate to **Results** in the top navigation and select **Create result**.
+
+<Steps>
+  <Step title="Choose a result type">
+    PRMS organises results into typed categories. Select the type that best matches what your Initiative produced:
+
+    - **Knowledge product** — publications, datasets, tools, or other documented outputs.
+    - **Capacity sharing for development** — training events, workshops, academic programs.
+    - **Innovation development** — new or improved technologies, varieties, practices, or methods at the prototype or proof-of-concept stage.
+    - **Innovation use** — documented adoption of an innovation by target users or partners.
+    - **Innovation package / IPSR** — a bundled set of complementary innovations described as a pathway.
+    - **Policy change** — documented influence on a policy, regulation, budget allocation, or institutional commitment.
+    - **Other outcome / output** — results that do not fit the categories above.
+
+    The result type determines which type-specific sections appear later in the form. You cannot change the type after creation, so take a moment to confirm your choice.
+  </Step>
+  <Step title="Fill in the required common fields">
+    After choosing a type, PRMS opens the **General information** section. Complete all required fields before moving to other sections:
+
+    - **Title** — a concise, plain-English description of the result (aim for one sentence). Avoid acronyms without expansion.
+    - **Reporting year / phase** — select the active reporting phase. You can only submit against the currently open phase.
+    - **Result level** — Output or Outcome, as defined by your ToC.
+    - **Lead center** — the CGIAR center taking primary responsibility. At least one center must be marked as lead before submission.
+    - **Short description** — a paragraph explaining what the result is and why it matters. The word counter in the field keeps you within the required range.
+
+    PRMS saves your work automatically each time you navigate between sections. Use the **Save** button in the section toolbar if you want an explicit save.
+  </Step>
+  <Step title="Complete type-specific fields">
+    Once you save General information, the panel menu on the left shows additional sections relevant to your result type. Work through each section in order — the green check icons on the panel menu update as you complete required fields, so you can see your progress at a glance.
+  </Step>
+</Steps>
+
+<Tip>
+  Save often. PRMS autosaves when you navigate between sections, but clicking **Save** within a section commits any in-progress edits immediately and prevents losing work during network interruptions.
+</Tip>
+
+---
+
+## Attaching evidence
+
+Every result requires at least one evidence item before submission. Navigate to the **Evidences** section from the panel menu on the left.
+
+PRMS accepts three types of evidence links:
+
+<AccordionGroup>
+  <Accordion title="CGSpace handles">
+    If your knowledge product, dataset, or report is already in the CGIAR institutional repository CGSpace, paste the full handle URL (e.g., `https://hdl.handle.net/10568/XXXXXX`). PRMS validates the handle format and stores it as a permanent, citable reference. CGSpace handles are the preferred evidence type for knowledge products because they resolve to a stable landing page with metadata.
+  </Accordion>
+  <Accordion title="External URLs">
+    For web resources outside CGSpace — journal articles with a DOI, government gazettes, partner websites — paste the full URL including `https://`. PRMS does not automatically check that external URLs are active; you are responsible for verifying accessibility before submitting. Copy the URL into a private browser window to confirm it resolves without authentication.
+  </Accordion>
+  <Accordion title="SharePoint documents">
+    Internal working documents, field reports, or unpublished datasets stored in your Initiative's SharePoint can be linked by pasting the SharePoint sharing URL. Ensure the sharing permission is set to **Anyone with the link can view** before submitting, so reviewers can access the document during QA.
+  </Accordion>
+</AccordionGroup>
+
+For each evidence item, specify:
+
+- **Evidence type** — select from the dropdown (peer-reviewed paper, grey literature, website, etc.).
+- **Is this the main evidence?** — toggle on for the primary piece of evidence; you may have only one primary evidence per result.
+- **Year** — the year the evidence was published or created.
+- **Description** (optional) — a sentence explaining what the document demonstrates and how it relates to this result.
+
+<Note>
+  QA reviewers check that evidence links are live and that the document's content supports the result's claims. Broken links or mismatched content are among the most common reasons results are returned to Editing.
+</Note>
+
+---
+
+## Geographic scope
+
+Use the **Geographic location** section to indicate where the result occurred or had an effect.
+
+PRMS offers three scopes. Select the one that best fits:
+
+- **Global** — the result applies across all countries or has no specific geographic boundary.
+- **Regional** — select one or more CGIAR regions (e.g., Sub-Saharan Africa, South Asia).
+- **National** — search for and select individual countries. You can combine regions and countries if the result spans both.
+
+For country-level results, PRMS also supports sub-national specification for selected countries. If your result targeted a specific administrative division, enable sub-national detail and enter the province, district, or equivalent unit.
+
+<Tip>
+  Be precise rather than overly broad. A result that occurred in Ethiopia should not be marked Global simply to avoid the search step. Accurate geographic data feeds downstream BI dashboards and bilateral reports.
+</Tip>
+
+---
+
+## Partner attribution
+
+Open the **Partners** or **Contributors and partners** section (the label varies by reporting portfolio) to record the organisations that contributed to this result.
+
+<Steps>
+  <Step title="Search for the institution">
+    Type the institution name in the search box. PRMS searches the CLARISA institutional catalog, which covers CGIAR centers, international organisations, national partners, NGOs, and universities. Select the matching record — do not enter free text if a CLARISA record exists.
+  </Step>
+  <Step title="Set the partner role">
+    Choose the role that describes how this institution participated:
+    - **Lead** — the organisation that drove the result (typically your own center).
+    - **Implementing partner** — an organisation that co-delivered the result.
+    - **Funder** — an organisation that provided financial support.
+    - **Other** — any supporting role not covered above.
+  </Step>
+  <Step title="Mark the lead center">
+    At least one entry must be flagged **Is lead center** before you can submit. This identifies which CGIAR center takes accountability for data quality.
+  </Step>
+  <Step title="Add all contributing institutions">
+    Repeat the search and role-selection steps for every institution involved. Thorough partner attribution improves bilateral reporting and allows partners to find and verify their contributions.
+  </Step>
+</Steps>
+
+---
+
+## DAC cross-cutting scores
+
+PRMS collects scores against four OECD DAC cross-cutting policy markers. You will find these in the **General information** section or a dedicated sub-section depending on result type.
+
+The markers are:
+
+| Marker | What it measures |
+|---|---|
+| **Gender** | The degree to which the result addresses gender equality and women's empowerment. |
+| **Climate change — adaptation** | The degree to which the result helps communities or ecosystems adapt to climate change. |
+| **Climate change — mitigation** | The degree to which the result contributes to reducing greenhouse gas emissions. |
+| **Nutrition** | The degree to which the result contributes to improved nutrition outcomes. |
+
+For each marker select one of the following scores:
+
+- **0 — Not targeted** — the marker is not relevant to this result.
+- **1 — Significant** — the marker is an important and explicit objective.
+- **2 — Principal** — the marker is the primary objective of the result.
+
+<Note>
+  The DAC scores are mandatory for all result types. "Not targeted" (0) is a valid answer and is not penalised during QA. Leave a score blank only if you are genuinely unsure — reviewers will flag missing scores.
+</Note>
+
+---
+
+## ToC alignment
+
+Theory of Change (ToC) alignment connects your result to the outcomes defined in your Initiative's ToC tree. Open the **Theory of Change** section from the panel menu.
+
+<Steps>
+  <Step title="Select the ToC level">
+    Choose whether this result contributes to an **End-of-Initiative Outcome (EOIO)**, a **Work Package outcome**, or a **Sub-IDO** (depending on which ToC nodes are available for your Initiative).
+  </Step>
+  <Step title="Search and select the ToC node">
+    Use the search box to find the specific outcome statement. The dropdown shows all ToC nodes linked to your Initiative. Read the full outcome text before selecting — the label in the dropdown may be truncated.
+  </Step>
+  <Step title="Describe the contribution">
+    In the contribution narrative field, explain in 2–4 sentences how this result advances the selected outcome. Be specific about mechanisms and evidence.
+  </Step>
+  <Step title="Add additional ToC links if needed">
+    A single result can contribute to more than one ToC node. Use **Add ToC alignment** to attach a second or third link. Each link requires its own contribution narrative.
+  </Step>
+</Steps>
+
+<Warning>
+  At least one ToC alignment row is required before you can move a result to the Submitted status. Do not leave this section empty and expect to submit — the system enforces this check at submission time.
+</Warning>
+
+---
+
+## Submitting your result
+
+When all required sections are complete and all panel-menu checks are green, you are ready to submit.
+
+<Steps>
+  <Step title="Review the completeness indicators">
+    Each section in the panel menu shows a coloured check. Green means the section meets minimum requirements. Red or amber means required fields are missing. Address every non-green check before proceeding.
+  </Step>
+  <Step title="Click Submit">
+    Open the result and click the **Submit** button in the top action bar. A confirmation modal summarises what you are about to do — review it and confirm.
+  </Step>
+  <Step title="Result status changes to Submitted">
+    After confirmation, the result status changes from **Editing** to **Submitted** and is placed in the QA review queue. You will receive an in-app notification when a reviewer acts on your result.
+  </Step>
+</Steps>
+
+---
+
+## Resolving QA feedback
+
+If a reviewer returns your result to **Editing**, you will receive a notification with a link to the result and the reviewer's comments.
+
+<Steps>
+  <Step title="Open the review comments panel">
+    On the result detail page, look for the **QA comments** or **Review history** section. Comments are attached to specific fields or sections — read each comment carefully before making changes.
+  </Step>
+  <Step title="Address each comment">
+    Work through the comments one at a time. Update the field the reviewer flagged, add missing evidence, correct geographic scope, or revise your ToC contribution narrative as directed. You can add a reply or clarifying note in the comment thread if a change requires explanation.
+  </Step>
+  <Step title="Re-check completeness">
+    After making edits, confirm that all panel-menu checks are still green. Edits sometimes affect validation state in adjacent sections.
+  </Step>
+  <Step title="Resubmit">
+    When all feedback is addressed, click **Submit** again. The result re-enters the QA queue and the reviewer is notified.
+  </Step>
+</Steps>
+
+<AccordionGroup>
+  <Accordion title="Why was my result returned even though all fields were filled?">
+    Completing a field does not guarantee passing QA. Reviewers assess the *quality* of content: whether evidence actually supports the claim, whether the ToC narrative is specific, whether partner roles are accurate. A filled field with generic or inaccurate content will still be returned.
+  </Accordion>
+  <Accordion title="Can I edit a result after it has been Submitted?">
+    Not directly. A result in Submitted status is locked for editing. A QA reviewer must return it to Editing before you can make changes. If you notice an error after submitting, contact the QA team or use the in-app share request to flag the issue.
+  </Accordion>
+  <Accordion title="What happens if I miss the submission deadline?">
+    Phase boundaries are enforced at the system level. Once a phase closes, results that have not reached Submitted status are locked in their current state and cannot be submitted to that phase. Contact your PMU lead as soon as you anticipate missing the deadline.
+  </Accordion>
+  <Accordion title="My institution is not in the CLARISA catalog. What should I do?">
+    CLARISA is maintained externally. If an institution is missing, do not use a free-text workaround — contact your platform administrator, who can request a CLARISA catalog addition through the appropriate channel.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,159 @@
+---
+title: 'QA reviewers guide for PRMS result assessment'
+description: 'Access the PRMS QA queue, evaluate results field by field, add structured comments per section, and advance or return submissions with a recorded decision.'
+keywords: ['QA review', 'quality assurance', 'result assessment', 'reviewer comments', 'PRMS', 'CGIAR']
+---
+
+Quality Assurance (QA) reviewers are the gatekeepers between result submission and final acceptance into the OneCGIAR portfolio record. Your role is to examine each submitted result against defined quality criteria, give submitters structured feedback they can act on, and record a formal decision that advances or returns the result. This guide covers the full review workflow from accessing your queue to closing out a review cycle.
+
+## Accessing the QA review queue
+
+Navigate to **Quality Assurance** in the top navigation bar. You will see a dropdown or panel asking you to **Select Entity**. Choose the Initiative or center you are reviewing from the list — the list reflects your assigned review responsibilities as configured by the platform administrator.
+
+Once you select an entity, the QA review interface loads inside an embedded frame. This frame connects to the external QA tool that PRMS integrates with, and it presents the full queue of results awaiting review for that entity. You can expand the frame to full screen using the **Open in full screen** control in the top-right corner of the frame area, which is useful when reviewing results with long descriptions or many evidence items.
+
+<Note>
+  If the entity selection dropdown is empty or the frame does not load, your account may not have QA reviewer permissions for any entity. Contact your platform administrator to verify your role assignment.
+</Note>
+
+---
+
+## Opening a result for review
+
+In the QA queue, each row represents one submitted result. The queue shows the result title, type, submitting Initiative, and current review status. Click on a result row to open the **result review drawer** or detail panel.
+
+The review drawer presents all result data in a structured layout:
+
+- **Header** — result code, title, type, and the current status badge (Submitted).
+- **General information** — description, result level, lead center, DAC scores.
+- **Evidence** — all attached evidence items with clickable links.
+- **ToC alignment** — the Theory of Change outcomes the submitter linked to this result, with contribution narratives.
+- **Geographic location** — the countries, regions, or global scope selected.
+- **Partners** — all contributing institutions and their assigned roles.
+- **Type-specific fields** — sections specific to the result type (e.g., knowledge product metadata, capacity-sharing delivery methods, innovation pathway data).
+- **Review history** — a chronological log of all previous review actions and comments on this result, including prior cycles.
+
+<Tip>
+  Check the review history first. A result that has been through multiple review cycles may have recurring issues that the submitter has not fully resolved. Understanding the history helps you write more targeted feedback.
+</Tip>
+
+---
+
+## Reviewing field by field
+
+Work through the result systematically. Below is what to examine in each key area.
+
+<AccordionGroup>
+  <Accordion title="Evidence quality">
+    For each evidence item:
+
+    - **Click the link** and confirm it opens. A broken or access-restricted link is an automatic return reason.
+    - **Read enough of the document** to verify it supports the result's stated claims. A report that predates the result by five years or covers a different geography is not valid evidence.
+    - **Check the evidence type** is correctly assigned. A peer-reviewed journal article marked as "grey literature" will distort downstream reporting.
+    - **Verify at least one evidence item is marked as primary** if the type requires it.
+    - For CGSpace handles, the handle should resolve to a CGIAR landing page — if it returns a 404, the record may have been moved or deleted.
+    - For SharePoint links, confirm the document is publicly accessible without an organisational login.
+  </Accordion>
+  <Accordion title="ToC alignment accuracy">
+    - Read the ToC node label and the submitter's contribution narrative together. The narrative should describe a plausible mechanism by which this result advances the stated outcome — not simply restate the outcome in different words.
+    - Check that the result level (Output vs Outcome) is consistent with the ToC node chosen. An Output result aligned to an EOIO (End-of-Initiative Outcome) without an intermediate linkage is a misalignment worth flagging.
+    - If the result has multiple ToC links, evaluate each independently. One strong alignment does not excuse a weak second alignment.
+  </Accordion>
+  <Accordion title="Partner attribution">
+    - Confirm the lead center is identified and is the CGIAR center that genuinely led the work.
+    - Look for obviously missing partners — if the result description mentions an institution by name but that institution does not appear in the partners list, flag it.
+    - Check that CLARISA-registered institutions are used rather than free-text entries. Free-text entries indicate the submitter bypassed the catalog search.
+    - Partner roles should be accurate. An organisation listed as Funder that the description shows as a co-implementing partner should be corrected.
+  </Accordion>
+  <Accordion title="Geographic accuracy">
+    - Compare the geographic scope selected against the result description. A training workshop described as taking place in Nairobi, Kenya should have Kenya selected, not "Global."
+    - Global scope is appropriate when a result — such as a published methodology — is genuinely designed for worldwide application rather than a specific country context.
+    - Sub-national data should be present when the result's impact is demonstrably sub-national (e.g., a specific district or watershed).
+  </Accordion>
+  <Accordion title="DAC cross-cutting scores">
+    - All four DAC markers (Gender, Climate adaptation, Climate mitigation, Nutrition) should have a score selected. A blank field means the submitter did not complete this section — return the result.
+    - Evaluate whether the score assigned matches the result content. A result whose description explicitly describes improving women's income should not be scored 0 (Not targeted) on Gender unless there is a documented reason.
+    - Score 2 (Principal) should be used sparingly and only when the marker is the primary and explicit objective of the work, not just a co-benefit.
+  </Accordion>
+  <Accordion title="General information and title">
+    - The title should clearly identify what the result is. Vague titles like "Report on activities" or "Workshop outcomes" are not acceptable.
+    - The description should answer: what was produced, who benefited, and how does it contribute to CGIAR's mission? Missing any of these elements warrants a comment.
+    - The result level (Output / Outcome) should be consistent with the result type and ToC alignment.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Adding structured comments
+
+Comments in the QA tool are the primary mechanism for communicating with submitters. Well-written comments reduce back-and-forth and help submitters fix issues on the first revision.
+
+**Best practices for QA comments:**
+
+- **Be field-specific.** Attach a comment to the specific field or section it relates to (e.g., "Evidence — item 2" or "ToC alignment — contribution narrative"). General comments are harder for submitters to act on.
+- **Describe the problem, not just the symptom.** Instead of "Evidence link is broken," write "Evidence link 2 (SharePoint URL) returns an access-denied error. The document needs to be shared publicly before resubmission."
+- **Reference the criterion.** When a comment relates to a specific quality requirement, name it: "At least one evidence item must be the primary evidence — please toggle the 'Is primary evidence' flag on the most relevant document."
+- **Avoid prescribing the exact solution** when multiple valid approaches exist. Give the submitter space to make an informed decision.
+- **Keep a professional, constructive tone.** QA comments are part of the system record and may be reviewed by portfolio leads and auditors.
+
+---
+
+## Making a review decision
+
+After completing your field-by-field assessment, you record a formal decision.
+
+<Steps>
+  <Step title="Determine the outcome">
+    Decide whether the result meets quality criteria sufficiently to advance, or whether it must be returned for revision:
+
+    - **Advance to Quality Assessed** — the result meets all mandatory criteria. Evidence is valid and accessible, ToC alignment is coherent, partners and geography are accurate, DAC scores are complete and plausible. Minor stylistic issues that do not affect data integrity do not require a return.
+    - **Return to Editing** — one or more mandatory criteria are not met, or content quality is too low to accept. Use this when fixing the issues requires submitter action (new evidence, corrected attribution, etc.).
+  </Step>
+  <Step title="Add a summary comment">
+    Before recording your decision, add a summary comment in the general comments field that briefly explains the outcome. For a pass, a short acknowledgement is sufficient. For a return, the summary should reference the main issues even if you have already added field-level comments — this ensures submitters see the key issues even if they read only the summary.
+  </Step>
+  <Step title="Record your decision">
+    Use the decision control in the QA interface to set the result status:
+    - **Quality Assessed** (status_id = 2) — the result passes and is ready for final submission by the portfolio.
+    - **Returned to Editing** (status_id = 1) — the result is sent back to the submitter for revision.
+
+    Your decision, timestamp, and user identity are automatically recorded in the result's review history.
+  </Step>
+</Steps>
+
+<Warning>
+  Once you advance a result to Quality Assessed, reversing that decision requires admin intervention or a subsequent review cycle. Make sure your assessment is complete before recording a pass decision.
+</Warning>
+
+---
+
+## Reviewing submission history and prior cycles
+
+The **Review history** panel at the bottom of the result review drawer shows every status transition and comment recorded across all review cycles for this result. Use it to:
+
+- Identify patterns — if a result has been returned three times for the same evidence issue, note it explicitly in your current comments.
+- Understand context — a comment from an earlier cycle may explain why a submitter chose a particular approach.
+- Verify that prior feedback was addressed — compare the previous return comments against the current state of each field.
+
+<AccordionGroup>
+  <Accordion title="What are the most common reasons results fail QA?">
+    Based on recurring patterns across reporting cycles, the most frequent failure reasons are:
+
+    1. **Broken or access-restricted evidence links** — particularly SharePoint links with organisational access restrictions.
+    2. **Generic or circular ToC contribution narratives** — narratives that restate the outcome statement without explaining the mechanism.
+    3. **Missing lead center** — no CGIAR center flagged as lead in the partners section.
+    4. **Incorrect geographic scope** — Global selected for results with a clear national or regional footprint.
+    5. **Blank DAC scores** — one or more of the four markers left without a score selection.
+    6. **Evidence type mismatch** — a peer-reviewed article filed as grey literature, or vice versa.
+    7. **Vague or missing result title** — titles that do not identify the result type or subject matter.
+  </Accordion>
+  <Accordion title="What if a result is technically complete but the work described seems implausible?">
+    QA is primarily a data-quality check, not a scientific peer review. If all required fields are complete and internally consistent, but you have substantive concerns about the underlying work, flag this in a general comment and advance the result. Escalate your concern through the appropriate scientific review channel outside PRMS.
+  </Accordion>
+  <Accordion title="How do I handle a result that belongs to a different reviewer's queue?">
+    The QA queue is filtered by the entity you select. If you see a result that belongs to a different Initiative or entity, do not review it — deselect the current entity and choose the correct one. If the result appears in your queue in error, contact the platform administrator to check the entity-reviewer assignment.
+  </Accordion>
+  <Accordion title="Can I add comments without making a final decision?">
+    Yes. You can save draft comments in the QA interface without recording a pass or return decision. This is useful if you need to pause a review session and return to it later. Make sure to record your final decision before the phase deadline.
+  </Accordion>
+</AccordionGroup>

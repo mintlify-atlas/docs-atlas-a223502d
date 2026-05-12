@@ -1,0 +1,135 @@
+{
+  "projectType": "saas",
+  "projectName": "PRMS — Planning, Reporting & Management System",
+  "projectDescription": "The single web platform where CGIAR Initiatives, Centers, and partners plan, capture, qualify, and submit reportable results for the OneCGIAR portfolio.",
+  "theme": "maple",
+  "primaryColor": "#1B6E5A",
+  "lightColor": "#E8F5F1",
+  "darkColor": "#0D3D2F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/result-capture",
+              "features/submission-workflow",
+              "features/quality-assurance",
+              "features/ipsr-pathway"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/result-submitters",
+              "guides/qa-reviewers",
+              "guides/pmu-portfolio-leads",
+              "guides/platform-admins"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/clarisa",
+              "integrations/theory-of-change",
+              "integrations/auth-cognito",
+              "integrations/external-systems"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/backend",
+              "development/frontend",
+              "development/testing",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Results",
+            "pages": [
+              "api/results",
+              "api/ipsr",
+              "api/quality-assurance"
+            ]
+          },
+          {
+            "group": "Reporting Surfaces",
+            "pages": [
+              "api/bilateral",
+              "api/platform-report",
+              "api/type-one-report"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "api/versioning",
+              "api/notifications",
+              "api/admin"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Typed result capture for all CGIAR result types (knowledge products, capacity sharing, innovation development/use, IPSR, policy change)",
+    "Structured submission workflow: Editing → Quality Assessed → Submitted",
+    "Quality Assurance tooling with review queues, structured comments, and status transitions",
+    "Innovation Package (IPSR) pathway authoring with multi-step workflows",
+    "CLARISA integration for master data (centers, initiatives, partners, countries, indicators) with scheduled syncs",
+    "Theory of Change alignment — attach results to ToC outcomes",
+    "Bilateral and platform-report typed payload surfaces for downstream consumers",
+    "Phase/version management (reporting year + sub-phases) with snapshot-on-rollover semantics",
+    "Role-based access control with Admin, Lead, Co-Lead, Coordinator, Member, and Guest roles",
+    "Real-time notifications via Pusher + WebSockets and transactional email",
+    "AI-assisted result authoring helpers",
+    "Admin tooling for roles, AD users, global parameters, phases, soft-delete recovery, and narratives"
+  ],
+  "publicApiSurface": [
+    "GET /api/bilateral/* — JWT-excluded typed payload surfaces per result type",
+    "GET /api/platform-report/* — JWT-excluded headless reporting payloads",
+    "GET /api/results — List and filter PRMS results",
+    "POST /api/results — Create a new result",
+    "GET /api/results/:id — Get result detail",
+    "PUT /api/results/:id — Update a result",
+    "GET /api/ipsr/* — Innovation Package pathway endpoints",
+    "GET /api/result-qaed/* — Quality assurance decisions and transitions",
+    "POST /api/result-qaed/status — Advance result status (1→2→3)",
+    "GET /api/versioning/* — Reporting phase/version management",
+    "GET /api/home/* — Landing-page aggregates and dashboard data",
+    "GET /api/notification/* — In-app notifications",
+    "GET /clarisa/* — CLARISA catalog proxy (centers, initiatives, countries, regions, indicators)",
+    "GET /toc/* — Theory of Change trees and result→ToC mappings",
+    "GET /auth/* — Authentication and user/role management",
+    "GET /type-one-report — PMU consolidated report surface",
+    "GET /api/global-narratives/* — PMU narrative blocks",
+    "GET /api/manage-data/* — Soft-delete recovery (admin)",
+    "GET /api/global-parameters/* — Runtime configuration parameters",
+    "GET /api/ai/* — AI-assisted authoring helpers"
+  ]
+}

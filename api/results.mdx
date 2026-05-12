@@ -1,0 +1,800 @@
+---
+title: "Results API — create, list, and manage PRMS results"
+description: "Create, list, filter, and update PRMS result records. Covers sub-resources: evidences, geographic scope, partners, ToC links, actors, and budget."
+---
+
+The Results API is the core reporting surface of PRMS. Every piece of evidence that an initiative reports—policy changes, innovations, capacity sharing outcomes, and more—is modelled as a **result**. The endpoints below let you create result headers, fill in general information, manage geographic scope and partner associations, and retrieve filtered lists for reporting.
+
+All endpoints require the custom `auth: <JWT>` header returned by the authentication flow. The token is automatically refreshed on each successful request.
+
+## Authentication
+
+<Note>
+  All Results API endpoints enforce JWT authentication via the `auth` header. There is no public access. Requests without a valid token receive `401 Unauthorized` with `shouldRedirectToLogin: true`. Expired tokens receive `401` with `shouldRefreshToken: true`.
+</Note>
+
+```http
+auth: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Result types
+
+The `result_type_id` field on every result record maps to one of the following values:
+
+| ID | Type |
+|----|------|
+| 1  | Policy Change |
+| 2  | Innovation Use |
+| 3  | Capacity Change |
+| 4  | Other Outcome |
+| 5  | Capacity Sharing for Development |
+| 6  | Knowledge Product |
+| 7  | Innovation Development |
+| 8  | Other Output |
+| 9  | Impact Contribution |
+| 10 | Innovation Use (IPSR) |
+| 11 | Complementary Innovation |
+
+## Result statuses
+
+| ID | Name | Description |
+|----|------|-------------|
+| 1  | Editing | Result is being authored; not yet submitted for QA. |
+| 2  | Quality Assessed | A QA reviewer has assessed the result positively. |
+| 3  | Submitted | Result submitted to the reporting cycle. |
+| 4  | Discontinued | Result has been discontinued. |
+| 5  | Pending Review | Result is awaiting bilateral review. |
+| 6  | Approved | Bilateral result has been approved by a reviewer. |
+| 7  | Rejected | Bilateral result has been rejected; returned for revision. |
+
+## Response envelope
+
+Successful responses are wrapped by the `ResponseInterceptor`:
+
+```json
+{
+  "response": { ... },
+  "message": "Successful response",
+  "status": 200
+}
+```
+
+Error responses from the global `HttpExceptionFilter` follow:
+
+```json
+{
+  "response": "...",
+  "statusCode": 400,
+  "message": "...",
+  "timestamp": "2024-03-15T12:00:00.000Z",
+  "path": "/api/results/..."
+}
+```
+
+---
+
+## Core result endpoints
+
+### Create result header
+
+Registers the base record for a new result and links it to the authenticated user. The returned `id` is used for all subsequent sub-resource writes.
+
+```http
+POST /api/results/create/header
+```
+
+**Request body**
+
+<ParamField body="initiative_id" type="number" required>
+  CLARISA initiative identifier that owns this result.
+</ParamField>
+
+<ParamField body="result_type_id" type="number" required>
+  Result type (1–11). See the type table above.
+</ParamField>
+
+<ParamField body="result_level_id" type="number" required>
+  Result level identifier (output, outcome, etc.).
+</ParamField>
+
+<ParamField body="result_name" type="string" required>
+  Human-readable title for the result. Must be unique among active results.
+</ParamField>
+
+<ParamField body="handler" type="string" required>
+  Short slug-style handle used to reference the result internally.
+</ParamField>
+
+**Example**
+
+```bash
+curl -X POST https://prms.example.org/api/results/create/header \
+  -H "auth: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "initiative_id": 50,
+    "result_type_id": 1,
+    "result_level_id": 2,
+    "result_name": "National seed policy revised to include climate-resilient varieties",
+    "handler": "seed-policy-2024"
+  }'
+```
+
+**Response fields**
+
+<ResponseField name="id" type="number">
+  Internal primary key (bigint). Use this as `resultId` in sub-resource endpoints.
+</ResponseField>
+
+<ResponseField name="result_code" type="number">
+  Auto-assigned sequential result code shown in the UI (e.g. `1042`).
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Confirmed title stored on the record.
+</ResponseField>
+
+<ResponseField name="result_type_id" type="number">
+  Result type id as supplied.
+</ResponseField>
+
+<ResponseField name="status_id" type="number">
+  Defaults to `1` (Editing) on creation.
+</ResponseField>
+
+<ResponseField name="version_id" type="number">
+  Phase/version this result belongs to.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  `true` on creation.
+</ResponseField>
+
+<ResponseField name="created_by" type="number">
+  User id of the authenticated creator.
+</ResponseField>
+
+<ResponseField name="created_date" type="string">
+  ISO-8601 timestamp of creation.
+</ResponseField>
+
+---
+
+### Get result by ID
+
+Returns full result data for the provided internal identifier.
+
+```http
+GET /api/results/get/:id
+```
+
+<ParamField path="id" type="number" required>
+  Internal result `id` (not `result_code`).
+</ParamField>
+
+---
+
+### List all results (full)
+
+Returns the complete list of registered results. Large datasets — prefer the filtered endpoint for production use.
+
+```http
+GET /api/results/get/all/data
+```
+
+---
+
+### List simplified results
+
+Returns a lightweight payload suitable for dropdowns and autocomplete widgets.
+
+```http
+GET /api/results/get/all/simplified
+```
+
+---
+
+### Search results by name
+
+Performs a partial-match search on the result title.
+
+```http
+GET /api/results/get/name/:name
+```
+
+<ParamField path="name" type="string" required>
+  Search term matched against the result title.
+</ParamField>
+
+---
+
+### Deep search by title
+
+Runs the legacy deep-search pipeline, which searches across additional indexed fields.
+
+```http
+GET /api/results/get/depth-search/:title
+```
+
+<ParamField path="title" type="string" required>
+  Search term passed to the full-text pipeline.
+</ParamField>
+
+---
+
+### List results by user role (filtered)
+
+The primary endpoint for the PRMS result list page. Returns paginated, filterable results associated with a given user. All query parameters are optional and can be comma-separated for multi-value filtering.
+
+```http
+GET /api/results/get/all/roles/filter/:userId
+```
+
+<ParamField path="userId" type="number" required>
+  The user whose role memberships determine the visible result set.
+</ParamField>
+
+<ParamField query="initiative" type="string">
+  Filter by initiative id or official code. Alias for `submitter_id`.
+</ParamField>
+
+<ParamField query="phase" type="string">
+  Reporting phase (version) id. Alias for `version_id`. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="version_id" type="string">
+  Filter by phase/version id. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="result_type_id" type="string">
+  Filter by result type id (1–11). Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="status_id" type="string">
+  Filter by result status id (1–7). Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="portfolio_id" type="string">
+  Filter by CLARISA portfolio id. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="funding_source" type="string">
+  Filter by funding source. Use `W1/W2` for pool funding / Science Program results, or `W3/Bilaterals` for bilateral project results.
+</ParamField>
+
+<ParamField query="title" type="string">
+  Full-text search term against the result title.
+</ParamField>
+
+<ParamField query="page" type="number">
+  Page number (1-based). When provided, the response includes a `meta` pagination block.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Items per page. Only effective when `page` is also provided.
+</ParamField>
+
+<ParamField query="filter_created_by_me" type="boolean">
+  When `true`, restricts to results where `created_by` matches the authenticated user.
+</ParamField>
+
+<ParamField query="filter_submitted_by_me" type="boolean">
+  When `true`, restricts to results that have an active submission row for the authenticated user. When both `filter_created_by_me` and `filter_submitted_by_me` are `true`, rows matching either condition are included (OR logic).
+</ParamField>
+
+**Example**
+
+```bash
+curl "https://prms.example.org/api/results/get/all/roles/filter/42?\
+phase=34&result_type_id=1,7&status_id=1&page=1&limit=25" \
+  -H "auth: $TOKEN"
+```
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of result summary objects.
+
+  <Expandable title="Result summary fields">
+    <ResponseField name="id" type="number">Internal result id.</ResponseField>
+    <ResponseField name="result_code" type="number">Human-facing result code.</ResponseField>
+    <ResponseField name="title" type="string">Result title.</ResponseField>
+    <ResponseField name="result_type_id" type="number">Result type (1–11).</ResponseField>
+    <ResponseField name="status_id" type="number">Current status (1–7).</ResponseField>
+    <ResponseField name="version_id" type="number">Reporting phase id.</ResponseField>
+    <ResponseField name="reported_year_id" type="number">Reporting year (e.g. `2024`).</ResponseField>
+    <ResponseField name="is_active" type="boolean">Whether the result is active.</ResponseField>
+    <ResponseField name="created_date" type="string">ISO-8601 creation timestamp.</ResponseField>
+    <ResponseField name="last_updated_date" type="string">ISO-8601 last-update timestamp.</ResponseField>
+    <ResponseField name="lead_initiative" type="object">Short object with the lead initiative `id` and `official_code`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Present only when `page` and `limit` query params are provided.
+
+  <Expandable title="Pagination meta fields">
+    <ResponseField name="total" type="number">Total matching records.</ResponseField>
+    <ResponseField name="page" type="number">Current page.</ResponseField>
+    <ResponseField name="limit" type="number">Items per page.</ResponseField>
+    <ResponseField name="totalPages" type="number">Total number of pages.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### Soft delete a result
+
+Marks a result as deleted (`is_active = false`). The record is preserved for audit purposes.
+
+```http
+PATCH /api/results/delete/:id
+```
+
+<ParamField path="id" type="number" required>
+  Internal result id to delete.
+</ParamField>
+
+<ParamField query="justification" type="string">
+  Optional operational justification stored on the deletion audit record.
+</ParamField>
+
+---
+
+### Get science program progress
+
+Aggregates reported results by Science Program (portfolio 3) and splits them by the authenticated user's permissions.
+
+```http
+GET /api/results/get/science-programs/progress
+```
+
+<ParamField query="versionId" type="number">
+  Optional phase/version identifier to scope the aggregation.
+</ParamField>
+
+---
+
+### Get results by program and centers
+
+Returns results grouped by project, filtered by program and optionally by center.
+
+```http
+GET /api/results/by-program-and-centers
+```
+
+<ParamField query="programId" type="string" required>
+  Program identifier (e.g. `SP01`).
+</ParamField>
+
+<ParamField query="centerIds" type="string">
+  One or more center ids, comma-separated (e.g. `CT01,CT02`).
+</ParamField>
+
+---
+
+### Get pending review count
+
+Returns the count of results pending review for a specific Science Program.
+
+```http
+GET /api/results/pending-review
+```
+
+<ParamField query="programId" type="string" required>
+  Program identifier (e.g. `SP01`).
+</ParamField>
+
+---
+
+## General information
+
+### Update general information
+
+Creates or updates the full general information section of a result. Call this after creating the result header to supply the description, cross-cutting tags, partners, and KRS metadata.
+
+```http
+PATCH /api/results/create/general-information
+```
+
+<ParamField body="result_id" type="number" required>
+  Internal result id to update.
+</ParamField>
+
+<ParamField body="result_name" type="string" required>
+  Official result title.
+</ParamField>
+
+<ParamField body="result_description" type="string" required>
+  Narrative description of the result.
+</ParamField>
+
+<ParamField body="result_type_id" type="number" required>
+  Result type (1–11).
+</ParamField>
+
+<ParamField body="result_level_id" type="number" required>
+  Result level identifier.
+</ParamField>
+
+<ParamField body="gender_tag_id" type="number" required>
+  Gender tag level id.
+</ParamField>
+
+<ParamField body="climate_change_tag_id" type="number">
+  Climate change tag level id.
+</ParamField>
+
+<ParamField body="nutrition_tag_level_id" type="number">
+  Nutrition tag level id.
+</ParamField>
+
+<ParamField body="environmental_biodiversity_tag_level_id" type="number" required>
+  Environmental / biodiversity tag level id.
+</ParamField>
+
+<ParamField body="poverty_tag_level_id" type="number" required>
+  Poverty tag level id.
+</ParamField>
+
+<ParamField body="institutions" type="array">
+  Array of `{ institutions_id: number }` objects for partner institutions.
+</ParamField>
+
+<ParamField body="institutions_type" type="array">
+  Array of `{ institutions_type_id: number }` for institution types without a specific institution.
+</ParamField>
+
+<ParamField body="lead_contact_person" type="string" required>
+  Full name of the lead contact person.
+</ParamField>
+
+<ParamField body="is_krs" type="boolean" required>
+  Whether this result is registered in KRS.
+</ParamField>
+
+<ParamField body="krs_url" type="string">
+  URL to the result's KRS entry (required when `is_krs` is `true`).
+</ParamField>
+
+<ParamField body="is_discontinued" type="boolean" required>
+  Whether the result has been discontinued.
+</ParamField>
+
+### Get general information
+
+Retrieves the general information section for a result.
+
+```http
+GET /api/results/get/general-information/result/:id
+```
+
+<ParamField path="id" type="number" required>
+  Internal result id.
+</ParamField>
+
+---
+
+## Geographic scope
+
+### Save geographic scope
+
+Sets the geographic scope for a result, including regions and countries.
+
+```http
+PATCH /api/results/update/geographic/:resiltId
+```
+
+<ParamField path="resiltId" type="number" required>
+  Internal result id (note: the path param is intentionally spelled `resiltId` in the API).
+</ParamField>
+
+<ParamField body="geo_scope_id" type="number" required>
+  CLARISA geographic scope identifier (global, regional, national, sub-national, etc.).
+</ParamField>
+
+<ParamField body="regions" type="array">
+  Array of `{ id: number, name: string }` region objects when scope includes regions.
+</ParamField>
+
+<ParamField body="countries" type="array">
+  Array of `{ id: number, name: string }` country objects when scope includes countries.
+</ParamField>
+
+### Get geographic scope
+
+```http
+GET /api/results/get/geographic/:resiltId
+```
+
+<ParamField path="resiltId" type="number" required>
+  Internal result id.
+</ParamField>
+
+---
+
+## Sub-resource endpoints
+
+The following sub-resources are mounted as children of `/api/results/`. Each manages a specific aspect of the result record.
+
+<AccordionGroup>
+  <Accordion title="Evidences — /api/results/evidences/*">
+    Manages supporting evidence links and documents attached to a result.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/evidences/get/:resultId` | Retrieve all evidences for a result. |
+    | PATCH | `/api/results/evidences/save/:resultId` | Save (create or update) evidences for a result. |
+
+    Evidence records carry a `link` (URL), `description`, and `evidence_type_id` classifying the document.
+  </Accordion>
+
+  <Accordion title="Geographic scope (countries/regions) — /api/results/result-countries/* and /api/results/result-regions/*">
+    Fine-grained country and region associations, distinct from the top-level geographic scope field.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/result-countries/get/:resultId` | List countries linked to a result. |
+    | PATCH | `/api/results/result-countries/save/:resultId` | Save country associations. |
+    | GET | `/api/results/subnational/get/:resultId` | List sub-national scope records. |
+    | PATCH | `/api/results/subnational/save/:resultId` | Save sub-national scope. |
+  </Accordion>
+
+  <Accordion title="Partners and institutions — /api/results/results-by-institutions/*">
+    Manages partner/institution links for a result, including delivery type and role.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/results-by-institutions/get/:resultId` | List all partner institutions for a result. |
+    | PATCH | `/api/results/results-by-institutions/save/:resultId` | Save partner institution associations. |
+
+    Each institution record includes `institution_id`, `institution_roles_id`, and optionally delivery-type sub-records.
+  </Accordion>
+
+  <Accordion title="ToC links — /api/results/toc/*">
+    Manages Theory of Change (ToC) alignments — linking a result to ToC nodes from one or more initiatives.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/toc/get/:resultId` | Retrieve ToC result links for a result. |
+    | PATCH | `/api/results/toc/save/:resultId` | Save ToC result links. |
+
+    Each ToC link record references a `toc_result_id` (from the `/toc/` API) and carries contributing initiative information.
+  </Accordion>
+
+  <Accordion title="Actors — /api/results/actors/*">
+    Records the people and target groups directly associated with a result (e.g. farmers reached, researchers trained).
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/actors/get/:resultId` | List actor records for a result. |
+    | PATCH | `/api/results/actors/save/:resultId` | Save actor records. |
+
+    Actor records include `actor_type_id`, `sex_and_age_disaggregation`, `how_many`, and optional age-range breakdowns.
+  </Accordion>
+
+  <Accordion title="Budget — /api/results/result-budget (non-pooled projects)">
+    Manages W3/bilateral budget links associated with a result via non-pooled projects.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/non-pooled-projects/get/:resultId` | List non-pooled project budget records. |
+    | PATCH | `/api/results/non-pooled-projects/save/:resultId` | Save non-pooled project budget links. |
+
+    Each record carries `grant_title`, `center_grant_id`, `funder_institution_id`, and `lead_center_id`.
+  </Accordion>
+
+  <Accordion title="Submissions — /api/results/submissions/*">
+    Controls the submission lifecycle of a result.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | PATCH | `/api/results/submissions/submit/:resultId` | Submit a result (moves toward status `Submitted`). |
+    | PATCH | `/api/results/submissions/unsubmit/:resultId` | Retract a submission and return to `Editing`. |
+    | PATCH | `/api/results/submissions/submit-ipsr/:resultId` | Submit an IPSR innovation package. |
+    | PATCH | `/api/results/submissions/unsubmit-ipsr/:resultId` | Retract an IPSR submission. |
+  </Accordion>
+
+  <Accordion title="Linked results — /api/results/linked/*">
+    Links one result to related results across the platform.
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/linked/get/:resultId` | Retrieve linked result records. |
+    | PATCH | `/api/results/linked/save/:resultId` | Save linked result associations. |
+  </Accordion>
+
+  <Accordion title="Impact areas — /api/results/impact-area-indicators/* and /api/results/impact-area-target/*">
+    Records alignment of a result with CGIAR impact areas (food security, poverty, nutrition, etc.).
+
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/impact-area-indicators/get/:resultId` | List impact area indicator alignments. |
+    | PATCH | `/api/results/impact-area-indicators/save/:resultId` | Save impact area indicator alignments. |
+    | GET | `/api/results/impact-area-target/get/:resultId` | List impact area targets. |
+    | PATCH | `/api/results/impact-area-target/save/:resultId` | Save impact area targets. |
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Reporting exports
+
+### Basic reporting list
+
+Returns the dataset used to generate the basic Excel report. All filters are optional.
+
+```http
+POST /api/results/get/reporting/list
+```
+
+**Request body**
+
+<ParamField body="initDate" type="string">
+  Filter results created on or after this date (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField body="endDate" type="string">
+  Filter results created on or before this date (`YYYY-MM-DD`). Must be ≥ `initDate` when both are provided.
+</ParamField>
+
+<ParamField body="phases" type="array">
+  Array of `{ id: number }` phase objects to filter by.
+</ParamField>
+
+<ParamField body="searchText" type="string">
+  Full-text search applied to result title and result code.
+</ParamField>
+
+<ParamField body="inits" type="array">
+  Array of `{ id: number }` or `{ official_code: string }` initiative filter objects.
+</ParamField>
+
+<ParamField body="indicatorCategories" type="array">
+  Array of `{ id: number }` result type filter objects.
+</ParamField>
+
+<ParamField body="status" type="array">
+  Array of `{ status_id: number }` status filter objects.
+</ParamField>
+
+<ParamField body="fundingSource" type="array">
+  Array of `{ name: string }` with values `"W1/W2"` or `"W3/Bilaterals"`.
+</ParamField>
+
+<ParamField body="filterCreatedByMe" type="boolean">
+  When `true`, only returns results created by the authenticated user.
+</ParamField>
+
+<ParamField body="filterSubmittedByMe" type="boolean">
+  When `true`, only returns results submitted by the authenticated user. Combined with `filterCreatedByMe` as OR logic when both are `true`.
+</ParamField>
+
+**Example**
+
+```bash
+curl -X POST https://prms.example.org/api/results/get/reporting/list \
+  -H "auth: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phases": [{ "id": 34 }],
+    "indicatorCategories": [{ "id": 1 }, { "id": 7 }],
+    "status": [{ "status_id": 3 }]
+  }'
+```
+
+---
+
+### Full-metadata export (async)
+
+Queues an asynchronous job that builds a multi-sheet Excel workbook. When complete, the authenticated user receives an email with a time-limited S3 download link.
+
+```http
+POST /api/results/get/reporting/full-metadata-export/jobs
+```
+
+Accepts the same filter body as the basic reporting list. Returns `202 Accepted` with a `jobId`.
+
+**Response**
+
+```json
+{
+  "response": { "jobId": "abc123-def456" },
+  "message": "Export queued",
+  "status": 202
+}
+```
+
+### Get export job status
+
+```http
+GET /api/results/get/reporting/full-metadata-export/jobs/:jobId
+```
+
+<ParamField path="jobId" type="string" required>
+  Job id returned by the queue endpoint.
+</ParamField>
+
+<ResponseField name="response.status" type="string">
+  Job status: `pending`, `processing`, `done`, or `failed`.
+</ResponseField>
+
+<ResponseField name="response.downloadUrl" type="string">
+  Time-limited S3 pre-signed URL. Present only when `status` is `done`.
+</ResponseField>
+
+---
+
+## Bilateral result endpoints
+
+Results sourced from bilateral projects (`source = "API"`) have additional endpoints for review workflows.
+
+<AccordionGroup>
+  <Accordion title="GET /api/results/bilateral/:resultId — Get bilateral result">
+    Returns the complete bilateral result record including all type-specific summary fields.
+
+    <ParamField path="resultId" type="number" required>
+      Internal result id.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="PATCH /api/results/bilateral/review-update/data-standard/:resultId — Update data standard fields">
+    Updates ToC fields and Minimum Data Standard fields of a bilateral result in `PENDING_REVIEW` status.
+
+    <ParamField body="updateExplanation" type="string" required>
+      Explanation required for any field modification.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="PATCH /api/results/bilateral/:resultId/review-decision — Approve or reject">
+    Processes a review decision (approve or reject) for a bilateral result in `PENDING_REVIEW` status.
+
+    <ParamField body="decision" type="string" required>
+      `"APPROVED"` or `"REJECTED"`.
+    </ParamField>
+
+    <ParamField body="justification" type="string">
+      Required when `decision` is `"REJECTED"`.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="PATCH /api/results/bilateral/:resultId/title — Update title">
+    Updates the title of a bilateral result. The result must be in `EDITING` status unless the user has Admin privileges. The new title must be unique among active results.
+
+    <ParamField body="title" type="string" required>
+      New result title. Must be unique.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Reference endpoints
+
+<AccordionGroup>
+  <Accordion title="Institutions">
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/get/institutions/all` | List all institutions linked to results. |
+    | GET | `/api/results/get/institutions-type/all` | List all institution types. |
+    | GET | `/api/results/get/institutions-type/new` | List institution types available for new records. |
+    | GET | `/api/results/get/institutions-type/childless` | List institution types with no child relationships. |
+    | GET | `/api/results/get/institutions-type/legacy` | List legacy institution types. |
+  </Accordion>
+
+  <Accordion title="Result types and levels">
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/types` | List all result types. |
+    | GET | `/api/results/levels` | List all result levels. |
+    | GET | `/api/results/type-by-level` | List result types scoped to their valid levels. |
+  </Accordion>
+
+  <Accordion title="Centers, versions, and years">
+    | Method | Path | Description |
+    |--------|------|-------------|
+    | GET | `/api/results/get/centers/:resultId` | List centers associated with a result. |
+    | GET | `/api/results/versions` | List reporting phases/versions. |
+    | GET | `/api/results/years` | List available reporting years. |
+  </Accordion>
+</AccordionGroup>

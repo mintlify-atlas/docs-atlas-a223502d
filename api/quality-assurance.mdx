@@ -1,0 +1,439 @@
+---
+title: "Quality assurance API — review and status transitions"
+description: "Review, assess, and track quality decisions for PRMS results: QA log records, status transitions, review history, and structured field-level comments."
+---
+
+The Quality Assurance (QA) module controls the transition of results from the **Editing** stage through to **Quality Assessed** and ultimately **Submitted**. QA reviewers examine result content, record structured comments, and make go/return decisions. All actions are tracked in an immutable review history for audit purposes.
+
+All endpoints require the `auth: <JWT>` header. Endpoints that record QA decisions additionally require the authenticated user to hold an appropriate QA reviewer role.
+
+## Authentication and roles
+
+<Note>
+  QA decision endpoints require the user to hold an appropriate reviewer role for the result's owning initiative or action area. Read-only endpoints (review history, pending queue) are accessible to any authenticated user with visibility of the result. Role enforcement is applied via `ValidRoleGuard` and the `@Roles` decorator on the server.
+</Note>
+
+```http
+auth: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Status transition model
+
+Results move through statuses as QA decisions are made:
+
+```
+Editing (1) ──────────────────────────────────────────────────────────────────────►
+                │ positive QA decision                                              │
+                ▼                                                                   │ returned with comments
+        Quality Assessed (2)                                                        │
+                │ submission                                                        │
+                ▼                                                                   │
+          Submitted (3) ◄─────────────────────────────────────────────────────────►│
+                                                                                    │
+                      Discontinued (4) — terminal state                             │
+                                                                                    │
+Billing-specific statuses (W3/Bilateral results only):                              │
+   Pending Review (5) ──► Approved (6)                                             │
+                    └───► Rejected (7) ─────────────────────────────────────────────
+```
+
+| ID | Name | Description |
+|----|------|-------------|
+| 1  | Editing | Result is being authored. Default on creation. |
+| 2  | Quality Assessed | QA reviewer has assessed the result positively. |
+| 3  | Submitted | Result has been formally submitted to the reporting cycle. |
+| 4  | Discontinued | Result has been discontinued (terminal state). |
+| 5  | Pending Review | Bilateral result awaiting reviewer decision. |
+| 6  | Approved | Bilateral result approved by a reviewer. |
+| 7  | Rejected | Bilateral result rejected; returned for revision. |
+
+A standard result progresses: `Editing (1)` → `Quality Assessed (2)` → `Submitted (3)`. A positive QA decision advances the status to `Quality Assessed`; returning a result with comments resets it to `Editing`.
+
+---
+
+## QA log endpoints (`/api/result-qaed/*`)
+
+The `result-qaed` module persists `result_qaed_log` records. Each log row captures the date, the reviewing user (`qaed_user`), and any comments made at the time of assessment.
+
+<Note>
+  The `result-qaed` controller is currently a minimal scaffold. The QA workflow is primarily surfaced through the result review history (see below) and submission endpoints. The log table `result_qaed_log` is written by the service layer when QA transitions occur.
+</Note>
+
+**QA log record fields** (from the `result_qaed_log` entity):
+
+<ResponseField name="id" type="number">
+  Primary key (bigint).
+</ResponseField>
+
+<ResponseField name="result_id" type="number">
+  The result this log entry belongs to.
+</ResponseField>
+
+<ResponseField name="qaed_date" type="string">
+  Date the QA action was taken (`YYYY-MM-DD`).
+</ResponseField>
+
+<ResponseField name="qaed_comments" type="string">
+  Free-text comments recorded by the QA reviewer. Nullable.
+</ResponseField>
+
+<ResponseField name="qaed_user" type="number">
+  User id of the QA reviewer who made the decision.
+</ResponseField>
+
+---
+
+## Review history endpoints
+
+The review history provides an immutable audit trail of every QA decision and bilateral review action taken on a result. Records are written each time a status transition occurs (approve, reject, or update).
+
+### Get review history for a result
+
+```http
+GET /api/results/result-status/get/:resultId
+```
+
+<Note>
+  Review history records are stored in the `result_review_history` table and surfaced via the result-status sub-module. Each record captures the action taken, the reviewer's comment, and the timestamp.
+</Note>
+
+<ParamField path="resultId" type="number" required>
+  Internal result id whose review history you want to retrieve.
+</ParamField>
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of review history records, ordered by `created_at` descending.
+
+  <Expandable title="Review history record fields">
+    <ResponseField name="id" type="number">Primary key of the history record.</ResponseField>
+    <ResponseField name="result_id" type="number">The result this record belongs to.</ResponseField>
+    <ResponseField name="action" type="string">
+      One of `"APPROVED"`, `"REJECTED"`, or `"UPDATE"`. Maps to the `ReviewActionEnum`.
+    </ResponseField>
+    <ResponseField name="comment" type="string">
+      Reviewer comment. Required for `REJECTED` actions; optional for `APPROVED` and `UPDATE`.
+    </ResponseField>
+    <ResponseField name="created_by" type="number">
+      User id of the reviewer who recorded this action.
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO-8601 timestamp of when this record was created.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example**
+
+```bash
+curl https://prms.example.org/api/results/result-status/get/1042 \
+  -H "auth: $TOKEN"
+```
+
+**Example response**
+
+```json
+{
+  "response": [
+    {
+      "id": 201,
+      "result_id": 1042,
+      "action": "APPROVED",
+      "comment": "Result data is complete and well-evidenced.",
+      "created_by": 15,
+      "created_at": "2024-04-12T10:23:00.000Z"
+    },
+    {
+      "id": 198,
+      "result_id": 1042,
+      "action": "REJECTED",
+      "comment": "Evidence links are broken. Please update and resubmit.",
+      "created_by": 15,
+      "created_at": "2024-04-10T14:05:00.000Z"
+    }
+  ],
+  "message": "Successful response",
+  "status": 200
+}
+```
+
+---
+
+## Submission endpoints (QA lifecycle triggers)
+
+Status transitions are triggered through the submissions sub-module. These are the endpoints that advance or retract QA status.
+
+### Submit a result for QA
+
+Advances a result toward `Submitted (3)` status. The result must already be `Quality Assessed (2)` or pass server-side validation to proceed.
+
+```http
+PATCH /api/results/submissions/submit/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id to submit.
+</ParamField>
+
+<ParamField body="comment" type="string">
+  Optional submission comment recorded in the review history.
+</ParamField>
+
+**Example**
+
+```bash
+curl -X PATCH https://prms.example.org/api/results/submissions/submit/1042 \
+  -H "auth: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "comment": "All sections complete. Submitting for the 2024 reporting cycle." }'
+```
+
+---
+
+### Unsubmit (retract) a result
+
+Returns a submitted result to `Editing (1)` status, allowing the author to make further changes.
+
+```http
+PATCH /api/results/submissions/unsubmit/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id to retract.
+</ParamField>
+
+<ParamField body="comment" type="string">
+  Optional comment explaining the retraction.
+</ParamField>
+
+---
+
+### Submit an IPSR innovation package
+
+Submits an innovation package to the reporting cycle.
+
+```http
+PATCH /api/results/submissions/submit-ipsr/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+---
+
+### Unsubmit an IPSR innovation package
+
+Retracts an innovation package submission.
+
+```http
+PATCH /api/results/submissions/unsubmit-ipsr/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+---
+
+## Bilateral review decision endpoints
+
+W3/bilateral results (`source = "API"`) use a separate review workflow with `Pending Review (5)`, `Approved (6)`, and `Rejected (7)` statuses. These endpoints require the reviewer role for the respective bilateral portfolio.
+
+### Approve or reject a bilateral result
+
+```http
+PATCH /api/results/bilateral/:resultId/review-decision
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id. The result must be in `Pending Review (5)` status.
+</ParamField>
+
+<ParamField body="decision" type="string" required>
+  `"APPROVED"` to advance to `Approved (6)`, or `"REJECTED"` to move to `Rejected (7)`.
+</ParamField>
+
+<ParamField body="justification" type="string">
+  Explanation of the decision. Required when `decision` is `"REJECTED"`. Stored in the review history.
+</ParamField>
+
+**Example — reject with comment**
+
+```bash
+curl -X PATCH https://prms.example.org/api/results/bilateral/512/review-decision \
+  -H "auth: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "decision": "REJECTED",
+    "justification": "The geographic scope does not match the grant agreement. Please revise."
+  }'
+```
+
+---
+
+### Update bilateral data standard fields under review
+
+Updates ToC fields and Minimum Data Standard fields of a bilateral result that is in `Pending Review` status. Requires an update explanation when any field is modified.
+
+```http
+PATCH /api/results/bilateral/review-update/data-standard/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id.
+</ParamField>
+
+<ParamField body="updateExplanation" type="string" required>
+  Explanation of what was updated and why.
+</ParamField>
+
+<ParamField body="title" type="string">
+  Updated result title.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated result description.
+</ParamField>
+
+<ParamField body="geographic_scope_id" type="number">
+  Updated geographic scope identifier.
+</ParamField>
+
+---
+
+### Update bilateral ToC metadata under review
+
+Updates the `result_toc_result` ToC metadata for a bilateral result in `Pending Review` status.
+
+```http
+PATCH /api/results/bilateral/review-update/toc-metadata/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id.
+</ParamField>
+
+<ParamField body="updateExplanation" type="string" required>
+  Explanation of the metadata change.
+</ParamField>
+
+<ParamField body="toc_result_id" type="number">
+  Updated ToC result node id.
+</ParamField>
+
+---
+
+## Validation module
+
+Before a result or package can be submitted, a server-side validation check confirms that all required sections are complete. The validation module is accessible through the result sub-resources:
+
+```http
+GET /api/results/results-validation/:resultId
+```
+
+Returns a field-by-field validation summary indicating which sections are complete, incomplete, or have warnings. The submission endpoints internally invoke this validation and will return an error if required sections are missing.
+
+**Validation response fields**
+
+<ResponseField name="response" type="object">
+  Validation summary object.
+
+  <Expandable title="Validation fields">
+    <ResponseField name="is_valid" type="boolean">
+      `true` when all required sections are complete.
+    </ResponseField>
+    <ResponseField name="validation" type="array">
+      Array of validation check objects, one per section.
+
+      <Expandable title="Section check fields">
+        <ResponseField name="section" type="string">Section name (e.g. `"general_information"`, `"geographic_scope"`, `"partners"`).</ResponseField>
+        <ResponseField name="completed" type="boolean">Whether the section passes validation.</ResponseField>
+        <ResponseField name="message" type="string">Human-readable validation message shown in the UI.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+Similarly, IPSR packages use:
+
+```http
+GET /api/ipsr/results-innovation-packages-validation-module/:resultId
+```
+
+---
+
+## Home / aggregate QA metrics
+
+The home module exposes aggregate QA metrics used on the PRMS landing page. These give initiative leads and PMU staff a high-level view of QA pass rates per phase.
+
+```http
+GET /api/home
+```
+
+The home endpoint returns, among other things:
+
+<ResponseField name="response.qa_summary" type="object">
+  QA pass rate aggregates for the current reporting phase.
+
+  <Expandable title="QA summary fields">
+    <ResponseField name="total_results" type="number">Total active results in the current phase.</ResponseField>
+    <ResponseField name="quality_assessed" type="number">Results with status `Quality Assessed (2)` or higher.</ResponseField>
+    <ResponseField name="submitted" type="number">Results with status `Submitted (3)`.</ResponseField>
+    <ResponseField name="qa_pass_rate" type="number">Percentage of results that have passed QA (`quality_assessed / total_results * 100`).</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Pending review count
+
+Returns the count of results currently awaiting QA review for a specific Science Program.
+
+```http
+GET /api/results/pending-review
+```
+
+<ParamField query="programId" type="string" required>
+  Program identifier (e.g. `SP01`).
+</ParamField>
+
+**Example**
+
+```bash
+curl "https://prms.example.org/api/results/pending-review?programId=SP01" \
+  -H "auth: $TOKEN"
+```
+
+**Response**
+
+```json
+{
+  "response": {
+    "programId": "SP01",
+    "pending_count": 14
+  },
+  "message": "Successful response",
+  "status": 200
+}
+```
+
+---
+
+## QA workflow summary
+
+The typical QA lifecycle for a standard result:
+
+1. **Author creates result** — `status_id = 1` (Editing).
+2. **Author completes all sections** — validation module confirms completeness.
+3. **Author submits** — `PATCH /api/results/submissions/submit/:resultId` advances toward QA queue.
+4. **QA reviewer examines result** — checks content, evidence, geographic scope, partners, ToC alignment.
+5. **Reviewer approves** — result transitions to `Quality Assessed (2)`. A `APPROVED` record is written to `result_review_history`.
+6. **Reviewer returns with comments** — result reverts to `Editing (1)`. A `REJECTED` record with the comment is written to `result_review_history`. The author sees the comment and revises.
+7. **Repeat steps 3–6** as needed until approval.
+8. **Final submission** — from `Quality Assessed (2)` the author submits again, advancing to `Submitted (3)`.
+
+<Note>
+  Only users with the appropriate QA reviewer role assignment for the result's owning initiative or action area can record QA decisions. Authors cannot approve their own results. The server enforces this via `ValidRoleGuard`.
+</Note>

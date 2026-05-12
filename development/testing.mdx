@@ -1,0 +1,194 @@
+---
+title: "Testing strategy for PRMS backend and frontend"
+description: 'Backend Jest (5/20/35/40 thresholds) and frontend Jest + Cypress (50/60/60/60): test commands, coverage enforcement, CI gates, and excluded files.'
+keywords: ['testing', 'Jest', 'Cypress', 'coverage', 'CI', 'migration check', 'SonarCloud']
+---
+
+PRMS uses Jest for unit and integration testing across both the backend and frontend, and Cypress for end-to-end browser testing on the frontend. All coverage thresholds are enforced in CI — failing to meet them blocks a merge.
+
+<Tabs>
+  <Tab title="Backend">
+
+    ## Backend testing
+
+    The backend uses **Jest** with **ts-jest** to transpile TypeScript. Test files are co-located with their source files (e.g., `bilateral.service.spec.ts` sits next to `bilateral.service.ts`). End-to-end tests live in the `test/` directory and use a separate Jest config (`test/jest-e2e.json`).
+
+    ### Commands
+
+    Run all commands from the `onecgiar-pr-server/` directory.
+
+    ```bash
+    # Run all unit tests (force-exits after completion)
+    npm run test
+
+    # Run with watch mode
+    npm run test:watch
+
+    # Run with coverage report
+    npm run test:cov
+
+    # Run end-to-end tests
+    npm run test:e2e
+    ```
+
+    ### Coverage thresholds
+
+    The following thresholds are enforced globally. If any threshold is not met, the `npm run test:cov` command exits with a non-zero code and the CI pipeline fails.
+
+    | Metric | Threshold |
+    |---|---|
+    | Branches | 5% |
+    | Functions | 20% |
+    | Lines | 35% |
+    | Statements | 40% |
+
+    <Note>
+    These are floors, not targets. New modules should aim for substantially higher coverage. A module spec may raise the bar for its own surface area.
+    </Note>
+
+    ### What to test (priority order)
+
+    Focus testing effort in this order:
+
+    1. **Workflow transitions** — `status_id 1 → 2 → 3` (Editing → Quality Assessed → Submitted) and review history writes.
+    2. **Bilateral and platform-report payload mappers** — test against fixtures; do not mock the mapper itself.
+    3. **Repositories with non-trivial SQL** — pagination, joins, search. Avoid mocking TypeORM where the SQL is the test target.
+    4. **Guards, middleware, interceptors, filters** — `ValidRoleGuard`, `JwtMiddleware`, `ResponseInterceptor`, `HttpExceptionFilter`.
+    5. **RMQ consumers and cron tasks** — verify ACK-on-success behavior and idempotency.
+    6. **DTO validation** — confirm that invalid payloads are rejected and that `forbidNonWhitelisted` behaves as expected.
+
+    ### Excluded from coverage
+
+    The Jest configuration explicitly excludes the following from coverage collection:
+
+    - `*.spec.ts` and `*.e2e-spec.ts`
+    - `*.module.ts`
+    - `*.dto.ts`
+    - `*.entity.ts`
+    - `*.enum.ts`
+    - `*.constant.ts`
+    - `*.routes.ts`
+    - `*.interface.ts`
+    - `index.ts` and `main.ts`
+    - `migrations/**`
+    - `shared/test/**`
+
+    ### Shared test helpers
+
+    Shared test factories and mocks live in `src/shared/test/`. Use this location for any cross-module test fixture rather than duplicating helpers across spec files.
+
+    ### Migration check
+
+    Before any merge, the pending migration check must pass:
+
+    ```bash
+    # Local check — fails if entities have drifted from migrations
+    npm run migration:check
+
+    # CI-friendly version — used by the CI pipeline to block merges
+    npm run migration:check:ci
+    ```
+
+  </Tab>
+  <Tab title="Frontend">
+
+    ## Frontend testing
+
+    The frontend uses **Jest** with **jest-preset-angular** for unit tests, and **Cypress** for end-to-end browser testing. Unit test files are co-located with source files (`*.spec.ts` next to the component or service). Cypress tests live in the `cypress/` and `tests/` directories.
+
+    ### Commands
+
+    Run all commands from the `onecgiar-pr-client/` directory.
+
+    ```bash
+    # Run unit tests (no coverage report)
+    npm run test
+
+    # Run unit tests in watch mode
+    npm run test:watch
+
+    # Run unit tests with coverage
+    npm run test:coverage
+
+    # Run coverage with lcov and cobertura reporters
+    npm run test:coverage:html
+    ```
+
+    ### Cypress E2E commands
+
+    ```bash
+    # Open Cypress Test Runner (interactive GUI)
+    npm run cypress:open
+
+    # Run Cypress headless (for CI)
+    npm run cypress:run
+
+    # Run with Cypress Cloud recording
+    npm run cypress:run:record
+    ```
+
+    ### Coverage thresholds
+
+    | Metric | Threshold |
+    |---|---|
+    | Branches | 50% |
+    | Functions | 60% |
+    | Lines | 60% |
+    | Statements | 60% |
+
+    <Note>
+    Frontend thresholds are significantly higher than backend thresholds. Do not lower them. New code must arrive with tests that keep coverage above these floors.
+    </Note>
+
+    ### What to test (priority order)
+
+    1. **API services** in `shared/services/api/` — test against typed interfaces using realistic mock data.
+    2. **Guards and the auth interceptor** — `check-login.guard.ts`, `check-admin.guard.ts`, and `general-interceptor.service.ts`.
+    3. **Form validation and required-field behavior** on Result Detail sections.
+    4. **State services that fan out** — `DataControlService`, `RolesService`, completeness services.
+    5. **Pipes, directives, and the terminology service** — these are pure and easy to cover.
+
+    ### Cypress: what to test
+
+    Cypress is for **full user flows**, not unit assertions. Use it to assert:
+
+    - Result submission happy path and status transitions
+    - QA review cycle (open drawer, add comment, change status)
+    - Phase switching and deep-link preservation
+    - Share request modal and notification flow
+
+    Configuration is in `cypress.config.js`. Copy `cypress.env.js.example` to `cypress.env.js` and fill in test credentials before running locally.
+
+    ### Excluded from coverage
+
+    The following are excluded from `collectCoverageFrom`:
+
+    - `*routing.ts` files
+    - `*module.ts` files
+    - `model/*.ts` and `models/*.ts`
+    - `routing-data*.ts`
+    - `src/app/custom-fields/**`
+    - `src/app/pages/results/pages/result-detail/pages/rd-contributors-and-partners/**`
+
+    ### Third-party mocks
+
+    `@microsoft/clarity` is mocked via `tests/mocks/clarityMock.ts` and is mapped in the Jest `moduleNameMapper`. Add mocks for any new third-party telemetry library the same way — never let telemetry calls reach the network during unit tests.
+
+  </Tab>
+</Tabs>
+
+## CI gates
+
+Every pull request must pass all of the following before it can be merged:
+
+| Gate | Command | What it checks |
+|---|---|---|
+| Lint | `npm run lint` | ESLint rules in both packages |
+| Unit tests | `npm run test` | All spec files pass |
+| Build | `npm run build` | TypeScript compiles without errors |
+| Migration check | `npm run migration:check:ci` | No pending TypeORM migrations |
+| SonarCloud | Automated | Code quality and security analysis |
+
+<Warning>
+The migration check (`migration:check:ci`) is a hard gate. If your branch adds or modifies entities without a corresponding migration, the CI will fail and the PR cannot merge. Always run `npm run migration:check` locally before pushing.
+</Warning>

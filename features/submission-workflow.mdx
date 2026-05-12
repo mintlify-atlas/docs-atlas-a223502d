@@ -1,0 +1,120 @@
+---
+title: "PRMS result submission workflow and status lifecycle"
+description: "The PRMS status lifecycle: Editing → Quality Assessed → Submitted. Who triggers each transition, phase deadlines, versioning snapshots, and discontinuation."
+---
+
+Every result in PRMS moves through a defined lifecycle from the moment it is created until it is formally submitted for the reporting phase. The workflow is enforced server-side: transitions are recorded in the `result_review_history` table with the acting user, timestamp, and optional comment, so there is a complete audit trail of every status change.
+
+## Status definitions
+
+The `ResultStatusData` class in the server defines seven named statuses, each with a numeric `status_id`:
+
+| Status | ID | Meaning |
+|---|---|---|
+| **Editing** | 1 | The result is being authored. Submitters can freely edit all fields. |
+| **Quality Assessed** | 2 | A QA reviewer has assessed the result and it is ready for final submission. |
+| **Submitted** | 3 | The result has been formally submitted for the reporting phase. |
+| **Discontinued** | 4 | The result has been retired and will not progress further this phase. |
+| **Pending Review** | 5 | The result is in the review queue awaiting QA assignment. |
+| **Approved** | 6 | PMU or admin has marked the result as approved (post-submission). |
+| **Rejected** | 7 | The result has been rejected by a reviewer; it returns to active editing. |
+
+<Note>
+The primary cycle for most results is `Editing (1) → Quality Assessed (2) → Submitted (3)`. Backward transitions are only allowed through explicit reviewer or admin action and are always logged.
+</Note>
+
+## Workflow steps
+
+<Steps>
+  <Step title="Create and author (Editing)">
+    A result submitter — an Initiative or Center staff member with at least a Coordinator, Co-Lead, Lead, or Admin role — creates a new result by choosing its type and phase. The result immediately enters `status_id = 1` (Editing).
+
+    During authoring the submitter fills the common fields (title, description, geographic scope, lead center, ToC alignment, evidence links, DAC scores) and the type-specific section for their result class. The editing UI autosaves field-by-field. Structured validation runs on each save and returns inline field errors.
+
+    Any collaborators with the appropriate role on the owning initiative can also edit the result. The **share result request** mechanism (`share-result-request` module) allows submitters to invite colleagues from other initiatives to contribute.
+  </Step>
+
+  <Step title="Validate before advancing">
+    Before a result can leave Editing, server-side validation enforces the following minimum requirements (aligned with `AC-6` in the PRD):
+
+    - At least one **Theory of Change alignment** row where required by type.
+    - At least one valid **evidence link** where required by type.
+    - At least one **contributing center** with `is_leading_result = true`.
+    - All mandatory type-specific fields for the declared result type.
+
+    If any of these checks fail, the server returns a structured validation object listing each failing field. The result remains in Editing until all blockers are resolved. The `results-validation-module` sub-module tracks which sections are complete and surfaces a green-check/red-x readiness view to the submitter.
+  </Step>
+
+  <Step title="Submit to QA (Pending Review / Quality Assessed)">
+    Once validation passes, a submitter with an allowed role (Admin, Lead, Co-Lead, or Coordinator) calls the submit endpoint. The `SubmissionsService` runs a final permission check, then transitions the result to `status_id = 3` (Submitted) and writes a `Submission` row recording the acting user and any submission comment.
+
+    <Note>
+    In the current implementation, submit transitions directly to `status_id = 3`. The QA reviewer then works from the submitted pool. The Pending Review (`status_id = 5`) status is available in the domain model for configurations where an intermediate queue stage is needed.
+    </Note>
+
+    Immediately after a successful submission:
+    - An in-app notification and (if the user has email notifications enabled) an email is dispatched to relevant stakeholders via the `NotificationModule` and `email-notification-management` microservice.
+    - For Innovation Development results that have an IP contact request, the `SubmissionsService` sends a templated email to the designated IP experts, including the result URL, lead center, and contact person details.
+  </Step>
+
+  <Step title="Quality review (Quality Assessed or returned)">
+    A QA reviewer opens the result in the quality-assurance interface. The reviewer can:
+
+    - **Pass QA** — advance the result to `status_id = 2` (Quality Assessed) if the content meets the review criteria. The `ResultQaedLog` entity records the reviewer's user ID, review date, and optional comments.
+    - **Return to Editing** — push the result back to `status_id = 1` with a structured comment attached. The transition is written to `result_review_history` with action `REJECTED`. The submitter receives an in-app notification and sees the reviewer comments in the review history panel.
+
+    See [Quality assurance review process](/features/quality-assurance) for the full QA workflow.
+  </Step>
+
+  <Step title="Final submission confirmation">
+    After QA passes (`status_id = 2`), the result is ready for the final confirmed submission. A reviewer or admin can confirm the result as `status_id = 3` (Submitted), or the submitter may have already done so depending on the configured cycle. At this point the `result_review_history` receives an `APPROVED` action row.
+
+    Submitted results are included in bilateral and platform-report payloads for the phase. They are also counted in PMU dashboard metrics (`M1.1` — % of expected results submitted before deadline).
+  </Step>
+
+  <Step title="Discontinue (optional)">
+    If a result will not be completed for the current phase, a submitter with the appropriate role can set it to `status_id = 4` (Discontinued) with a mandatory justification comment. Discontinued results remain in the database (`is_active = true`) but are excluded from submission counts and bilateral payloads. They can be recovered by an admin through the `delete-recover-data` module.
+  </Step>
+</Steps>
+
+## Role permissions summary
+
+| Role | Can create | Can edit | Can submit | Can unsubmit | Can QA-review |
+|---|---|---|---|---|---|
+| Admin | Yes | Yes | Yes | Yes | Yes |
+| Lead | Yes | Yes | Yes | Yes | No |
+| Co-Lead | Yes | Yes | Yes | Yes | No |
+| Coordinator | Yes | Yes | Yes | No | No |
+| Member / Guest | No | Read-only | No | No | No |
+| QA Reviewer | No | No | No | No | Yes |
+
+<Warning>
+Frontend role gates are UX conveniences only. All permission checks are enforced server-side at the controller and guard layer. A user with insufficient role will receive a `401 Unauthorized` response from the API even if they bypass the UI controls.
+</Warning>
+
+## Unsubmit
+
+A submitted result can be pulled back to Editing (`status_id = 1`) by a user with Lead, Co-Lead, or Admin role, provided they supply a justification comment. The `SubmissionsService.unsubmitFunction` method rejects unsubmit requests that arrive without a comment. The unsubmit action writes a new `Submission` row with `status = false` and `status_id = 1`, creating a full trail of the back-and-forth.
+
+## Phase deadlines and submission boundaries
+
+Results are scoped to an active **reporting phase** managed by the `versioning` module. Each phase has an open and close date. Results must reach `status_id = 3` (Submitted) before the phase deadline to be counted in that phase's portfolio.
+
+When a phase closes, the versioning system snapshots all phase data without mutating it (`AC-5` in the PRD). The snapshot preserves the exact state of each submitted result, including all associations and type-specific fields, so that historical reports remain stable even as a new phase opens.
+
+<Note>
+Cross-phase reads require an explicit admin endpoint that opts out of the active-phase-only default. Regular API consumers always see only the current phase's data.
+</Note>
+
+## Versioning and result continuity
+
+Results are not duplicated across phases by default; a result lives in one phase. When PMU opens a new reporting year, teams create new results for new achievements. The `result_code` is stable and can appear in historical references, but each phase's records are independent. The `versions` sub-module under `api/results/` manages the relationship between a result and its phase context.
+
+## Notifications
+
+Every status transition that affects the submitter triggers a notification:
+
+- **In-app** — via Pusher / WebSocket socket events, surfaced in the notification panel.
+- **Email** — via the `email-notification-management` microservice, respecting each user's `UserNotificationSettings` channel preferences (some users opt out of email notifications for certain event types).
+
+Notification dispatch is fire-and-forget (no-await) on the submission hot path to avoid adding latency for the submitter.

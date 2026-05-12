@@ -1,0 +1,204 @@
+---
+title: "PRMS system architecture and design decisions"
+description: "PRMS runs an Angular 19 SPA over a NestJS 11 backend (Lambda or Docker) with MySQL as system of record, integrating CLARISA, Cognito, and RabbitMQ."
+keywords: ["PRMS", "architecture", "NestJS", "Angular", "MySQL", "AWS Lambda", "system design"]
+---
+
+PRMS is a TypeScript monorepo containing two applications: an Angular 19 single-page application served by Nginx and a NestJS 11 API deployed to AWS Lambda or Docker. This page covers the full-stack architecture, key design decisions, external integrations, and the role model that governs access control. Understanding this structure helps both contributors and integrators work with PRMS reliably.
+
+## System overview
+
+```
+Browser (Angular 19 SPA)
+   │
+   │ HTTPS, custom `auth: <JWT>` header
+   ▼
+API Gateway / Nginx
+   │
+   ▼
+NestJS app (Lambda or Docker container)
+   │
+   ├── /api/*              → JWT middleware → domain modules
+   ├── /v2/api/*           → JWT middleware → versioned modules
+   ├── /clarisa/*          → JWT middleware → CLARISA proxy and sync
+   ├── /toc/*              → JWT middleware → Theory of Change modules
+   ├── /api/platform-report/*   (JWT excluded — public payload surface)
+   ├── /api/bilateral/*         (JWT excluded — bilateral consumers)
+   └── /auth/*, /logs/*, /result-dashboard-bi/*, /contribution-to-indicators/*
+        │
+        ├── TypeORM ────► MySQL 8 (system of record)
+        ├── AWS SDK ────► Cognito, S3, DynamoDB (logs only)
+        ├── HTTP    ────► CLARISA, ToC services, CGSpace, MQAP
+        ├── LDAP    ────► Active Directory (ldapts)
+        ├── RabbitMQ ───► reporting-metadata-export pipeline
+        └── Pusher / WebSockets ─► real-time client events
+```
+
+## Frontend: Angular 19 SPA
+
+The client application lives in `onecgiar-pr-client/` and is built with Angular 19 and PrimeNG 19. It is compiled to a static bundle and served by Nginx in production.
+
+<CardGroup cols={2}>
+  <Card title="Page module structure" icon="folder-tree">
+    Each feature lives in its own Angular module under `src/app/pages/<feature>/`. Modules lazy-load via feature routing modules. Route guards enforce auth and role-based access at the navigation layer.
+  </Card>
+  <Card title="State management" icon="arrows-rotate">
+    State is held in services using Angular signals and `BehaviorSubject` — no NgRx store. Phase context is shell-level and propagated through query parameters on navigation.
+  </Card>
+  <Card title="HTTP interceptor" icon="shield-check">
+    A single interceptor at `shared/interceptors/general-interceptor.service.ts` attaches the `auth: <JWT>` header to every outgoing request. Elasticsearch URLs are excluded from this header injection.
+  </Card>
+  <Card title="Real-time updates" icon="bolt">
+    The client subscribes to live events via `ngx-socket-io` and `pusher-js`. Events include new QA assignments, submission updates, and result lock or unlock signals.
+  </Card>
+</CardGroup>
+
+## Backend: NestJS 11
+
+The server lives in `onecgiar-pr-server/` and follows a module-per-feature pattern. Every domain feature is a NestJS module with a controller, service, and repository. The entire application is wired in `app.module.ts` and routed in `main.routes.ts`.
+
+### Routing surface
+
+| Mount path | Auth | Notes |
+|------------|------|-------|
+| `/api/*` | JWT required | Main application traffic — results, QA, IPSR, notifications, admin |
+| `/v2/api/*` | JWT required | Forward-compatible versioned endpoints |
+| `/auth/*` | Public (login paths) | Login, token refresh, user and role management |
+| `/clarisa/*` | JWT required | CLARISA catalog proxy and scheduled sync |
+| `/toc/*` | JWT required | Theory of Change trees and result-to-ToC mappings |
+| `/api/bilateral/*` | **JWT excluded** | Headless typed payload surface for bilateral funders |
+| `/api/platform-report/*` | **JWT excluded** | Headless phase-scoped payload surface for platform reports |
+| `/type-one-report` | JWT required | PMU consolidated report (bound separately) |
+| `/logs/*` | Internal | DynamoDB operational log surface |
+
+### Middleware pipeline
+
+Every request to a JWT-protected path flows through `JwtMiddleware`, which:
+
+1. Reads the custom `auth` header and verifies the token using `JWT_SKEY`.
+2. Rejects `Basic` auth and `Authorization: Bearer` patterns — only the custom `auth` header is accepted.
+3. On valid token, re-signs and returns a fresh `auth` header on the response (rolling session). The Angular interceptor picks this up automatically.
+4. Exposes the decoded payload as `req.user` with fields `id` and `email`.
+
+<Warning>
+  The auth header is `auth: <JWT>`, not `Authorization: Bearer <JWT>`. This is a deliberate design decision for compatibility with existing clients and reverse proxies. Sending a `Basic` or `Bearer` token will result in a 401 response from the middleware.
+</Warning>
+
+## Deployment modes
+
+PRMS supports two backend deployment targets.
+
+<Tabs>
+  <Tab title="AWS Lambda (Serverless)">
+    The primary production deployment uses the Serverless Framework (`serverless.yaml`). The NestJS application is compiled and bundled as a single Lambda function with the handler at `dist/lambda.handler`.
+
+    Key considerations:
+    - Cold start budget applies — avoid adding heavy dependencies without measuring impact.
+    - `serverless-plugin-optimize` and `serverless-plugin-typescript` are active in the build chain.
+    - Lambda logs go to CloudWatch. Operational events also land in DynamoDB via the logs module.
+    - Global throttler (60 seconds / 100 requests) is active. Bilateral routes are exempt via `ThrottlerExcludeBilateralGuard`.
+  </Tab>
+  <Tab title="Docker container">
+    Both the backend and frontend have Dockerfiles for containerized deployments. The backend uses a multi-stage Node 20 Alpine build targeting the production stage. The frontend builds a static bundle served by Nginx.
+
+    ```bash
+    # Backend container (port from env.PORT, default 3000)
+    docker build -t prms-server ./onecgiar-pr-server
+    docker run --env-file .env -p 3000:3000 prms-server
+
+    # Frontend container (Nginx on port 80)
+    docker build -t prms-client ./onecgiar-pr-client
+    docker run -p 8080:80 prms-client
+    ```
+  </Tab>
+</Tabs>
+
+## Data layer
+
+<Info>
+  **MySQL is the system of record.** All result data, user roles, phase state, audit history, and CLARISA catalog caches are stored in MySQL 8 via TypeORM. DynamoDB is used exclusively for operational logs and is not a source of truth for any business entity.
+</Info>
+
+Schema changes are managed exclusively through TypeORM migrations in `onecgiar-pr-server/src/migrations/`. The `migration:check:ci` script blocks merges that introduce entity drift without a corresponding migration. Never edit the production schema by hand.
+
+Every result entity carries:
+- `result_code` — stable public identifier.
+- `result_type_id` — one of the 11 canonical types.
+- `status_id` — current workflow state (1–7).
+- `version_id` — the reporting phase this result belongs to.
+- `is_active` — soft-delete flag. Deletes flip this to `false`; they never hard-delete records without admin action.
+
+## External integrations
+
+PRMS integrates with — but does not own — these external systems.
+
+<AccordionGroup>
+  <Accordion title="CLARISA (master data)">
+    CLARISA is the source of truth for institutional catalogs: centers, initiatives, partner organizations, countries, regions, policy types, innovation readiness levels, and more. PRMS consumes CLARISA read-only via HTTP and caches each catalog in its own MySQL table, refreshed by a scheduled cron (`clarisaCron.service.ts`). The frontend always reads catalog data through `/clarisa/*` — never directly from CLARISA. Syncs must be idempotent: re-running leaves the cache identical.
+  </Accordion>
+  <Accordion title="Theory of Change services">
+    The `toc/` module fetches ToC trees and outcomes from an external Theory of Change service. PRMS uses these to let submitters align results to ToC outcome nodes. PRMS reads ToC data — it does not author or govern ToC content.
+  </Accordion>
+  <Accordion title="AWS Cognito + Active Directory">
+    Authentication flows through AWS Cognito combined with Active Directory (LDAP via `ldapts`). PRMS issues and verifies JWTs server-side but does not own identity provisioning. User records in PRMS mirror AD accounts via the `api/ad_users/` module.
+  </Accordion>
+  <Accordion title="CGSpace">
+    Knowledge products reference a stable `handle` from CGSpace, the CGIAR institutional repository. PRMS stores the handle and links out — it does not host PDFs or datasets.
+  </Accordion>
+  <Accordion title="MQAP">
+    The `api/m-qap/` module calls the MQAP service to pre-fill knowledge product attributes (e.g., journal metrics, publication details) based on a CGSpace handle or DOI.
+  </Accordion>
+  <Accordion title="AWS S3 and SharePoint">
+    Evidence files and PRMS documents are stored in AWS S3 or SharePoint via the `share-point` module. Result evidence rows reference stored documents by URL or handle.
+  </Accordion>
+  <Accordion title="RabbitMQ">
+    The `reporting-metadata-export` pipeline uses RabbitMQ for async processing. The consumer (`api/results/reporting-metadata-export.consumer.ts`) acknowledges messages only after successful processing. Failed messages are re-queued for retry rather than dropped.
+  </Accordion>
+  <Accordion title="Pusher and WebSockets">
+    Real-time events — new QA assignments, submission status changes, share requests — are published via the Pusher server SDK and consumed by the Angular client through `pusher-js` and `ngx-socket-io`.
+  </Accordion>
+  <Accordion title="DynamoDB (logs only)">
+    Operational log events are written to DynamoDB via `dynamoose` and surfaced at `/logs/*`. DynamoDB is not used for any business entity — MySQL is the system of record.
+  </Accordion>
+</AccordionGroup>
+
+## Role model and authorization
+
+PRMS uses a numeric role hierarchy. Lower numeric values indicate higher privilege. Roles are scoped by type: `Initiative`, `Action_Area`, or `Application`.
+
+| Role | Numeric value | Scope |
+|------|--------------|-------|
+| Admin | 1 | Application |
+| Guest | 2 | Initiative / Application |
+| Lead | 3 | Initiative |
+| Co-Lead | 4 | Initiative |
+| Coordinator | 5 | Initiative |
+| Member | 6 | Initiative |
+| Action Area Global Director | 7 | Action Area |
+| Action Area Coordinator | 8 | Action Area |
+
+Authorization is enforced server-side by `ValidRoleGuard` with the `@Roles(role, type)` decorator. A user is authorized when their role value is less than or equal to the required role value (i.e., having a higher-privilege role grants access to lower-privilege endpoints). Frontend role gates are UX-only — the backend always enforces.
+
+<Note>
+  Admin endpoints (phase management, global parameters, user management, delete-recover, CLARISA sync) require `RoleEnum.ADMIN = 1`. Initiative-level operations (creating results, requesting QA) require at minimum `RoleEnum.MEMBER = 6` scoped to the relevant initiative.
+</Note>
+
+## Key design decisions
+
+<AccordionGroup>
+  <Accordion title="Custom auth header, not Authorization: Bearer">
+    The API uses `auth: <JWT>` as the authentication header rather than the OAuth 2.0 standard `Authorization: Bearer`. This decision predates PRMS's current architecture and ensures compatibility with existing client tooling and reverse-proxy configurations. The Swagger UI at `/api` reflects this as an `apiKey` security scheme named `auth` in the `header`.
+  </Accordion>
+  <Accordion title="Bilateral and platform-report routes are JWT-excluded">
+    `/api/bilateral/*` and `/api/platform-report/*` do not require a JWT. These are headless surfaces for bilateral funders and platform-report consumers that cannot send an `auth` header in their integration context. Protection for these routes is handled at the network perimeter (IP allowlist, API Gateway authorization) rather than in the NestJS application.
+  </Accordion>
+  <Accordion title="MySQL is the system of record; DynamoDB is logs-only">
+    All business entities — results, roles, phases, CLARISA caches, review history — live in MySQL. DynamoDB holds operational log events only. This keeps schema management, migrations, and transactional integrity centralized in a single relational database.
+  </Accordion>
+  <Accordion title="Soft delete, never hard delete">
+    Deleting a result, evidence row, partner, or ToC link sets `is_active = false` and writes an audit row. Hard deletion is admin-only and rare. The `api/delete-recover-data/` module lets admins recover soft-deleted results without manual SQL.
+  </Accordion>
+  <Accordion title="CLARISA is always read-only from PRMS">
+    PRMS never writes back to CLARISA. The catalog caches in MySQL are populated by the CLARISA cron and can be refreshed on-demand by platform admins. All catalog reads in the frontend go through `/clarisa/*` — the Angular client never calls CLARISA directly.
+  </Accordion>
+</AccordionGroup>

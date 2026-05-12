@@ -1,0 +1,325 @@
+---
+title: 'Phase and versioning management API in PRMS'
+description: 'Manage PRMS reporting phases, control submission windows, and trigger phase rollover for results across the Reporting and IPSR modules.'
+keywords: ['versioning', 'phase', 'reporting cycle', 'snapshot', 'phase rollover', 'PRMS']
+---
+
+The versioning API controls the lifecycle of reporting phases in PRMS. Each phase represents a discrete reporting window — identified by a year and sub-phase name — within which results can be created and submitted. Admins use these endpoints to open or close phases, create new ones, and trigger the replication process that carries results forward into the next cycle.
+
+All endpoints under `/api/versioning/*` require a valid JWT in the `auth` header. Write operations (create, update, delete, replication) additionally require the **Admin** role (`RoleEnum.ADMIN`) scoped to the **Application** role type (`RoleTypeEnum.APPLICATION`). Requests that fail role checks return `403 Forbidden`.
+
+<Warning>
+Triggering annual replication (`PATCH /api/versioning/execute/annual/replicate/*`) is a long-running, portfolio-wide operation. It copies results from the current active phase into the next phase. Run it only once per cycle and only after verifying that the target phase is configured correctly.
+</Warning>
+
+---
+
+## Phase object
+
+A phase (stored in the `version` table) has the following fields:
+
+<ResponseField name="id" type="number">
+  Auto-generated primary key (bigint).
+</ResponseField>
+
+<ResponseField name="phase_name" type="string">
+  Human-readable label for the phase, for example `"Reporting 2024"`.
+</ResponseField>
+
+<ResponseField name="phase_year" type="number">
+  The four-digit reporting year this phase belongs to (MySQL `YEAR` type).
+</ResponseField>
+
+<ResponseField name="start_date" type="string">
+  ISO date string marking when the phase opens for result submission.
+</ResponseField>
+
+<ResponseField name="end_date" type="string">
+  ISO date string marking the submission deadline for this phase.
+</ResponseField>
+
+<ResponseField name="status" type="boolean">
+  Whether the phase is currently open (`true`) or closed (`false`). Closing a phase prevents new submissions.
+</ResponseField>
+
+<ResponseField name="previous_phase" type="number">
+  Foreign key referencing the phase that preceded this one. Used during rollover to determine which results are eligible for replication.
+</ResponseField>
+
+<ResponseField name="app_module_id" type="number">
+  Links the phase to an application module: `1` = Reporting, `2` = IPSR.
+</ResponseField>
+
+<ResponseField name="reporting_phase" type="number">
+  Self-referential FK pointing to the parent reporting phase. Sub-phases nest under a top-level reporting phase.
+</ResponseField>
+
+<ResponseField name="toc_pahse_id" type="string">
+  Identifier of the corresponding Theory of Change phase in the external ToC system.
+</ResponseField>
+
+<ResponseField name="portfolio_id" type="number">
+  Optional CLARISA portfolio this phase is associated with.
+</ResponseField>
+
+---
+
+## Endpoints
+
+### List phases
+
+```
+GET /api/versioning
+```
+
+Returns phases filtered by module type, submission status, and active state. All query parameters are optional and default to `module=all`, `status=open`, `active=active`.
+
+<ParamField query="module" type="string">
+  Filter by application module. One of `all` (default), `reporting`, `ipsr`.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by submission window status. One of `open` (default), `close`, `all`.
+</ParamField>
+
+<ParamField query="active" type="string">
+  Filter by active state. One of `active` (default), `inactive`, `all`.
+</ParamField>
+
+**Auth:** JWT required (`auth` header). No special role needed.
+
+---
+
+### List all phases (unfiltered)
+
+```
+GET /api/versioning/all
+```
+
+Returns every phase record without filtering. Use this to build admin UIs that need a full phase inventory.
+
+**Auth:** JWT required. No special role needed.
+
+---
+
+### Get version of a result
+
+```
+GET /api/versioning/result/:resultId
+```
+
+Returns the phase version associated with a specific result.
+
+<ParamField path="resultId" type="number" required>
+  PRMS result ID.
+</ParamField>
+
+**Auth:** JWT required. No special role needed.
+
+---
+
+### Get result counts by status and type
+
+```
+GET /api/versioning/number/results/status/:statusId/result-type/:resultTypeId
+```
+
+Returns the number of results replicated for a given status and result type. Useful for monitoring rollover progress.
+
+<ParamField path="statusId" type="number" required>
+  Result status ID (for example `1` = Editing, `3` = Submitted).
+</ParamField>
+
+<ParamField path="resultTypeId" type="number" required>
+  Result type ID matching `ResultTypeEnum` (for example `1` = Policy Change, `6` = Knowledge Product).
+</ParamField>
+
+**Auth:** JWT required. No special role needed.
+
+---
+
+### Create a phase
+
+```
+POST /api/versioning
+```
+
+Creates a new reporting phase. Only admins may call this endpoint.
+
+**Auth:** JWT required. `RoleEnum.ADMIN` + `RoleTypeEnum.APPLICATION` enforced by `ValidRoleGuard`.
+
+**Request body:**
+
+<ParamField body="phase_name" type="string" required>
+  Display name for the new phase.
+</ParamField>
+
+<ParamField body="phase_year" type="number" required>
+  Four-digit reporting year.
+</ParamField>
+
+<ParamField body="start_date" type="string" required>
+  Phase open date (ISO date string).
+</ParamField>
+
+<ParamField body="end_date" type="string" required>
+  Submission deadline (ISO date string).
+</ParamField>
+
+<ParamField body="app_module_id" type="number" required>
+  Module association: `1` = Reporting, `2` = IPSR.
+</ParamField>
+
+<ParamField body="previous_phase" type="number">
+  ID of the phase that precedes this one. Required when rollover replication will be used.
+</ParamField>
+
+<ParamField body="reporting_phase" type="number">
+  ID of the parent reporting phase for sub-phase nesting.
+</ParamField>
+
+<ParamField body="toc_pahse_id" type="number">
+  Corresponding Theory of Change phase identifier.
+</ParamField>
+
+<ParamField body="portfolio_id" type="number">
+  CLARISA portfolio ID to associate with this phase.
+</ParamField>
+
+---
+
+### Update a phase
+
+```
+PATCH /api/versioning/:id
+```
+
+Updates settings on an existing phase. Use this to open or close submission windows, rename a phase, or change its portfolio link.
+
+**Auth:** JWT required. `RoleEnum.ADMIN` + `RoleTypeEnum.APPLICATION`.
+
+<ParamField path="id" type="number" required>
+  Phase ID to update.
+</ParamField>
+
+**Request body:**
+
+<ParamField body="phase_name" type="string">
+  New display name.
+</ParamField>
+
+<ParamField body="status" type="boolean">
+  Set to `true` to open the phase for submissions; `false` to close it.
+</ParamField>
+
+<ParamField body="previous_phase" type="number">
+  Update the predecessor phase reference.
+</ParamField>
+
+<ParamField body="portfolio_id" type="number">
+  Update the CLARISA portfolio association.
+</ParamField>
+
+---
+
+### Delete a phase
+
+```
+DELETE /api/versioning/:id
+```
+
+Removes a phase record. Use only on phases that have no associated results.
+
+**Auth:** JWT required. `RoleEnum.ADMIN` + `RoleTypeEnum.APPLICATION`.
+
+<ParamField path="id" type="number" required>
+  Phase ID to delete.
+</ParamField>
+
+<Warning>
+Deleting a phase that already has results linked to it will leave those results in an inconsistent state. Verify the phase has no results before calling this endpoint.
+</Warning>
+
+---
+
+### Process phase change for a result
+
+```
+PATCH /api/versioning/phase-change/process/result/:resultId
+```
+
+Rolls over a single result into the next phase. Supports both the v1 and v2 code paths depending on whether `entityId` is supplied in the body.
+
+<ParamField path="resultId" type="number" required>
+  ID of the result to roll over.
+</ParamField>
+
+**Request body (optional):**
+
+<ParamField body="entityId" type="number">
+  When provided, uses the v2 replication path (`versionProcessV2`) which targets a specific IPSR entity. Omit for the standard v1 path.
+</ParamField>
+
+**Auth:** JWT required. No special admin role needed — the calling user's token is passed through to the service.
+
+---
+
+### Replicate annual results (Reporting)
+
+```
+PATCH /api/versioning/execute/annual/replicate/result
+```
+
+Triggers portfolio-wide annual replication for all standard Reporting results. Copies eligible results from the current active phase to the next phase.
+
+**Auth:** JWT required. `RoleEnum.ADMIN` + `RoleTypeEnum.APPLICATION`.
+
+<Warning>
+This is an irreversible, portfolio-wide operation. Confirm that the target phase is open and correctly configured before triggering replication.
+</Warning>
+
+---
+
+### Replicate annual innovation packages (IPSR)
+
+```
+PATCH /api/versioning/execute/annual/replicate/innovation-package
+```
+
+Triggers portfolio-wide annual replication for Innovation Package (IPSR) results. Mirrors the behavior of the result replication endpoint but targets the IPSR module.
+
+**Auth:** JWT required. `RoleEnum.ADMIN` + `RoleTypeEnum.APPLICATION`.
+
+---
+
+### Update QA status for results
+
+```
+PATCH /api/versioning/change/status/qa
+```
+
+Bulk-updates the Quality Assessment status on a set of results. Used internally during QA phase transitions.
+
+**Auth:** JWT required. No additional role guard — coordinate usage with the QA workflow team.
+
+---
+
+### Update QA result links
+
+```
+PATCH /api/versioning/update/links-result/qa
+```
+
+Refreshes linked-result entries for QA. Called after QA status changes to keep cross-result linkages consistent.
+
+**Auth:** JWT required. No additional role guard.
+
+---
+
+## URI versioning
+
+The PRMS server enables URI-based API versioning (`/v2/api/*`). The `apiVersionMiddleware` reads the `?version=` query parameter and writes `req['apiVersion']`. The phase-change process endpoint (`PATCH /api/versioning/phase-change/process/result/:resultId`) uses this to switch between the v1 and v2 replication paths based on whether `entityId` is present in the request body.
+
+<Note>
+Result submitters must complete and submit their results before the phase `end_date`. Once an admin sets `status: false` on a phase, the submission window closes and results can no longer be submitted for that cycle.
+</Note>

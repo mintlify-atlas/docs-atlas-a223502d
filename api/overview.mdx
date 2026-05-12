@@ -1,0 +1,155 @@
+---
+title: "PRMS REST API overview and endpoint reference"
+description: "The PRMS REST API: all route groups, base URL, Swagger UI location, rate limiting rules, standard response envelope, and error format."
+keywords: ["PRMS", "REST API", "endpoint reference", "NestJS", "Swagger", "rate limiting"]
+---
+
+The PRMS (Planning, Reporting & Management System) server exposes a NestJS-based REST API that powers the reporting client, bilateral data consumers, BI integrations, and internal tooling. All endpoints follow a consistent response envelope and are documented interactively via Swagger UI.
+
+## Base URL and Swagger UI
+
+In local development the server starts on port `3000` by default (overridden by the `PORT` environment variable). The interactive Swagger UI is available at:
+
+```
+http://localhost:3000/api
+```
+
+The Swagger UI authenticates using the custom `auth` header (configured as an API key named `auth`). See the [authentication guide](/api/authentication) for details on how to pass the token.
+
+Production deployments sit behind an API Gateway; the base URL will reflect the deployed domain configured by your infrastructure team.
+
+## Route groups
+
+The API is divided into several top-level route groups, each serving a distinct surface area.
+
+<CardGroup cols={2}>
+  <Card title="/api/*" icon="layer-group" href="#api-main-endpoints">
+    Core application endpoints: results, IPSR, QA, notifications, versioning, and more.
+  </Card>
+  <Card title="/v2/api/*" icon="code-branch" href="#versioned-endpoints">
+    URI-versioned equivalents of selected /api/* endpoints.
+  </Card>
+  <Card title="/auth/*" icon="lock" href="#auth-endpoints">
+    Authentication flows, user management, and role administration.
+  </Card>
+  <Card title="/clarisa/*" icon="database" href="#clarisa-endpoints">
+    Read-only proxy to CLARISA master-data catalogs.
+  </Card>
+  <Card title="/toc/*" icon="sitemap" href="#theory-of-change-endpoints">
+    Theory of Change trees and result-to-ToC mappings.
+  </Card>
+  <Card title="/result-dashboard-bi/*" icon="chart-bar" href="#bi-integration">
+    BI integration surface for Power BI and similar tools.
+  </Card>
+  <Card title="/logs/*" icon="scroll" href="#operational-logs">
+    Operational log queries backed by DynamoDB.
+  </Card>
+  <Card title="/contribution-to-indicators/*" icon="bullseye" href="#contribution-to-indicators">
+    Indicator-level contribution endpoints (top-level mount, not under /api/).
+  </Card>
+</CardGroup>
+
+### /api/* — main application endpoints
+
+The primary traffic route. All endpoints here require a valid JWT unless explicitly exempted (see [authentication](/api/authentication)). Sub-paths include:
+
+| Sub-path | Purpose |
+|---|---|
+| `/api/results/*` | Typed result CRUD — the largest module, covering all result types and their associations. |
+| `/api/ipsr/*` | Innovation Package and Scaling Readiness (IPSR) authoring. |
+| `/api/ipsr-framework/*` | Cross-result IPSR framework reporting. |
+| `/api/result-qaed/*` | Quality Assessment decisions and status transitions. |
+| `/api/notification/*` | In-app and email notifications. |
+| `/api/user-notification-settings/*` | Per-user notification channel preferences. |
+| `/api/versioning/*` | Reporting phase and cycle management. |
+| `/api/global-narratives/*` | PMU-curated narrative blocks. |
+| `/api/global-parameters/*` | Tunable runtime parameters. |
+| `/api/home/*` | Landing-page aggregates. |
+| `/api/ai/*` | AI-assisted authoring helpers. |
+| `/api/ad-users/*` | Active Directory user lookup. |
+| `/api/initiatives-entity/*` | Initiative-to-entity mappings. |
+| `/api/manage-data/*` | Soft-delete recovery (admin surface). |
+| `/api/results-framework-reporting/*` | Cross-cutting framework reporting flows. |
+| `/api/m-qap/*` | MQAP knowledge-product attribute lookup. |
+| `/api/bilateral/*` | Typed result summaries for bilateral consumers — **JWT-excluded, throttler-excluded** (perimeter-protected). |
+| `/api/platform-report/*` | Headless payload surface for platform reports — **JWT-excluded** (perimeter-protected). |
+
+### /v2/api/* — versioned endpoints
+
+URI-based versioning (`VersioningType.URI`) is enabled globally. Handlers that opt in with `@Version('2')` are served under `/v2/api/*`. The `apiVersionMiddleware` also reads a `?version=` query parameter and writes it into the request context.
+
+### /auth/* — authentication and user management
+
+Covers JWT issuance and refresh (via Cognito/AD flows), user records, role definitions, and role-by-user assignments. These endpoints do not require a pre-existing token; they are the entry point for obtaining one.
+
+### /clarisa/* — master-data catalog proxy
+
+Read-only proxy to the CLARISA catalog service. Data is cached locally via a cron-driven sync. Clients must never call CLARISA directly; always go through this surface. Requires authentication.
+
+### /toc/* — Theory of Change
+
+ToC trees (`toc-level`) and result-to-ToC mappings (`toc-results`). Treat ToC data as read-from-source-of-truth; PRMS aligns results to ToC nodes but does not author them. Requires authentication.
+
+### /type-one-report — PMU consolidated report
+
+Mounted at `/type-one-report` (not under `/api/`). JWT middleware is applied directly to this mount. Produces the PMU consolidated report.
+
+### /result-dashboard-bi/* — BI integration surface
+
+Surfaces data for BI tooling such as Power BI. Mounted at `/result-dashboard-bi/*`.
+
+### /logs/* — operational logs
+
+DynamoDB-backed operational log queries. Mounted at `/logs/*`.
+
+### /contribution-to-indicators/* — indicator contributions
+
+Top-level route (not nested under `/api/`). Covers indicator-level contribution data. Mounted directly at `/contribution-to-indicators/*`.
+
+## Rate limiting
+
+A global throttler is configured for all endpoints:
+
+- **Limit:** 100 requests per 60 seconds per client.
+- **Exemption:** `/api/bilateral/*` endpoints are exempt from rate limiting. These are protected at the network perimeter rather than within PRMS.
+
+## Response envelope
+
+Most endpoints return responses wrapped in a standard envelope by the `ResponseInterceptor`:
+
+```json
+{
+  "response": { },
+  "statusCode": 200,
+  "message": "...",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "path": "/api/results"
+}
+```
+
+<Note>
+Endpoints that serve external consumers (such as `/api/bilateral/*`) return plain arrays or objects without this envelope. The interceptor detects arrays and passes them through unchanged.
+</Note>
+
+### Error format
+
+Errors use the same envelope shape. The `response` field carries error details and the HTTP status code reflects the error category:
+
+```json
+{
+  "response": {
+    "valid": false,
+    "shouldRedirectToLogin": true
+  },
+  "statusCode": 401,
+  "message": "Authorization token is required",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "path": "/api/results"
+}
+```
+
+Error stacks are logged server-side but are never included in the response body.
+
+## Authentication
+
+All `/api/*`, `/clarisa/*`, and `/toc/*` endpoints require a valid JWT passed in the custom `auth` header. See the [authentication guide](/api/authentication) for the complete token flow, header format, and how to handle 401 responses.

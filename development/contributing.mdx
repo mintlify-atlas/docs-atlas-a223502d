@@ -1,0 +1,157 @@
+---
+title: 'How to contribute to the PRMS codebase'
+description: 'Commit format, branch strategy, the SDD spec workflow, pre-commit hooks, security rules, and the bilateral API change-log requirement for PRMS contributors.'
+keywords: ['contributing', 'commit', 'branch', 'SDD', 'spec', 'Husky', 'security', 'bilateral', 'pull request']
+---
+
+Contributing to PRMS follows a Spec-Driven Development (SDD) process. Before writing code, a spec must exist under `docs/specs/<module>/`. Commits follow a strict format, branches target `staging`, and several automated gates must pass before a merge is allowed.
+
+## Commit format
+
+Every commit message follows this structure:
+
+```
+<emoji> <type>(<scope>) [ticket]: <description>
+```
+
+| Emoji | Type | When to use |
+|---|---|---|
+| ✨ | `feat` | New features or functionality |
+| ♻️ | `refactor` | Refactor without behaviour change |
+| 🔧 | `fix` | Bug fixes |
+| 🎨 | `style` | UI, formatting, or styling changes |
+
+**Scope** is the component or service name — use the exact file or class name without the file extension:
+
+- `bilateral.service`
+- `result-review-drawer`
+- `phase-management-table`
+- `submissions.service`
+
+**Ticket** is optional (e.g., `P2-2498`). Include it when the commit addresses a tracked issue.
+
+### Examples
+
+```
+✨ feat(knowledge-product-info): Integrate FieldsManagerService and enhance test coverage
+♻️ refactor(result-review-drawer) P2-2498: Extract toNum function for number coercion
+🔧 fix(submissions.service): Correct formatting and remove unnecessary comment
+🎨 style(share-request-modal) P2-2498: Update modal title layout and button styles
+```
+
+## Branch strategy
+
+| Branch | Role |
+|---|---|
+| `master` | Production-tracking. Receives merges from `staging` via PR. |
+| `staging` | Integration branch. Open PRs here for feature work. |
+
+Open PRs against `staging` (or `master` directly, per the team's release cadence for hotfixes). Do not push directly to `master`.
+
+## Contribution workflow
+
+<Steps>
+  <Step title="Read the operating guides">
+    Read the root `CLAUDE.md` and the relevant package guide before touching code:
+
+    - **Backend:** `onecgiar-pr-server/CLAUDE.md` → `onecgiar-pr-server/src/CLAUDE.md`
+    - **Frontend:** `onecgiar-pr-client/CLAUDE.md` → `onecgiar-pr-client/src/CLAUDE.md`
+  </Step>
+
+  <Step title="Find or create the module spec">
+    Every feature or fix must be grounded in a spec. Look for an existing spec under `docs/specs/<module>/`. If it does not exist, create one from the templates in `docs/specs/general-setup/`:
+
+    - `requirements.md` — what the feature must do (references `docs/prd.md` goals and acceptance criteria)
+    - `design.md` — how it looks and behaves (references `docs/system-design/design.md`)
+    - `task.md` — the implementation checklist
+
+    Specs cite requirement IDs (`G#`, `US-*`, `AC-*`) from `docs/prd.md` and workflow IDs (`W1..W8`) from `docs/detailed-design/detailed-design.md`.
+  </Step>
+
+  <Step title="Implement per the conventions">
+    Follow the patterns in the package guides:
+
+    - **Backend:** module-per-feature under `src/api/<feature>/`, DTOs with `class-validator`, responses via `ResponseInterceptor`, schema changes only via migrations.
+    - **Frontend:** page-module-per-feature under `src/app/pages/<feature>/`, HTTP methods named `HTTP_METHOD_descriptiveName`, state with Angular signals, strings via `src/app/internationalization/`, tokens from `src/styles/colors.scss`.
+  </Step>
+
+  <Step title="Run lint and tests">
+    All of the following must pass locally before you push:
+
+    ```bash
+    # Backend (from onecgiar-pr-server/)
+    npm run lint
+    npm run test
+    npm run migration:check   # must show no pending migrations
+
+    # Frontend (from onecgiar-pr-client/)
+    npm run lint
+    npm run test
+    ```
+
+    Coverage must remain above the enforced thresholds. Do not lower them.
+  </Step>
+
+  <Step title="Update documentation">
+    - If the change modifies `/api/bilateral/*` or `/api/platform-report/*` — add a change-log row in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md` (see below).
+    - If the change introduces a new UX pattern — update `docs/system-design/design.md`.
+    - If the change adds a new module or integration — update `docs/detailed-design/detailed-design.md`.
+  </Step>
+
+  <Step title="Open a pull request against staging">
+    Use the commit format for the PR title. Reference the spec and any related ticket numbers in the PR description. All CI gates (lint, tests, build, `migration:check:ci`, SonarCloud) must pass before the PR can be reviewed.
+  </Step>
+</Steps>
+
+## Pre-commit hooks
+
+Husky is installed at the repo root via `npm run prepare`. It runs `lint-staged` on every commit, which executes ESLint on all staged `.ts` files.
+
+<Warning>
+Do not bypass the pre-commit hook with `git commit --no-verify`. The hook exists to catch lint errors before they reach CI. If the hook fails, fix the reported issues and recommit.
+</Warning>
+
+## Security rule
+
+PRMS enforces a hard, project-wide rule: **never print, log, or echo tokens, webhook URLs, API keys, passwords, AD/Cognito credentials, database credentials, or any other sensitive environment variable** anywhere — code, scripts, CI workflows, documentation, debug output, or error messages.
+
+This applies equally to:
+
+- Backend services, repositories, scripts, and CI pipelines
+- Frontend components, services, and telemetry
+- Documentation and example commands
+
+The full policy is in `.cursorrules` at the repo root. Secrets must live in environment variables, AWS Secrets Manager, or GitHub Secrets. PRs must not add `.env` content.
+
+<Warning>
+If you are about to add a `console.log`, `Logger.log`, or any debug statement that could contain a token, credential, or webhook URL — stop and re-read `.cursorrules`.
+</Warning>
+
+## Bilateral and platform-report API changes
+
+The `/api/bilateral/*` and `/api/platform-report/*` surfaces are the most externally visible APIs in PRMS. Downstream consumers depend on stable, typed payload shapes.
+
+**If your change modifies any response field on these surfaces**, you must:
+
+1. Keep changes **additive** — do not rename or remove existing fields without a `v2` rollout.
+2. Update the change log in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md`.
+3. Update the payload-fixture tests co-located with the controller or service.
+
+The bilateral contract document is the authoritative source for payload shapes. Any PR touching these routes will be reviewed against it.
+
+## Migration check requirement
+
+If your branch adds or changes TypeORM entities, you must include the corresponding migration and verify it locally:
+
+```bash
+# Generate the migration
+npm run migration:generate -- ./src/migrations/MyChangeName
+
+# Apply it
+npm run migration:run
+
+# Confirm no drift remains
+npm run migration:check
+```
+
+The CI pipeline runs `migration:check:ci`, which will fail the build if any pending migration is detected. There are no exceptions to this requirement.

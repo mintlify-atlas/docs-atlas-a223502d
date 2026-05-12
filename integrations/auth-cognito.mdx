@@ -1,0 +1,62 @@
+---
+title: 'Authentication and identity in PRMS'
+description: 'How PRMS handles user sign-in through AWS Cognito and Active Directory, session behavior, and what your role determines about your access.'
+keywords: ['authentication', 'login', 'cognito', 'active directory', 'sso', 'roles', 'access', 'identity']
+---
+
+PRMS uses your organization's existing credentials to sign you in. There is no separate PRMS password to manage — your access is tied to your CGIAR or affiliated organization's account, authenticated through **AWS Cognito** federated with **Active Directory**.
+
+## How you sign in
+
+When you open PRMS and click to log in, you are redirected to a sign-in page that accepts your organization credentials. If your organization participates in single sign-on (SSO), this process is seamless: you enter the credentials you already use for other CGIAR systems and are returned to PRMS, authenticated.
+
+PRMS does not store your password. Credential verification happens entirely in the identity provider — Cognito and Active Directory — and PRMS receives only a confirmation of who you are.
+
+## Session behavior
+
+Once signed in, your session remains active as long as you are using PRMS. The platform automatically renews your session while you are working, so you will not be interrupted mid-task by an unexpected sign-out.
+
+<Info>
+  If you leave PRMS idle for an extended period, your session will eventually expire and you will be prompted to sign in again. This is a security measure, not an error.
+</Info>
+
+Sessions are not shared across devices. Signing in on a second device starts a separate session; signing out on one device does not affect the other.
+
+## Your role in PRMS
+
+What you can see and do in PRMS depends on the **role** assigned to your account. Roles are assigned by platform administrators — you cannot change your own role.
+
+### Role types
+
+| Role | What you can do |
+|---|---|
+| **Admin** | Full access to all features, including the admin panel, role management, phase configuration, CLARISA sync controls, and data recovery. |
+| **Lead** | Initiative lead access. Can view and manage all results within the Initiative, access Initiative-level reporting views, and manage sharing. |
+| **Co-Lead** | Co-lead access equivalent to Lead for the purposes of Initiative management. |
+| **Coordinator** | Coordination-level access within an Initiative or action area. Can review and contribute across Initiative results without full admin rights. |
+| **Member** | Standard reporting access. Can create and edit results within the Initiatives or action areas you belong to, submit results for QA, and respond to QA feedback. |
+| **Guest** | Read-only access. You can browse results and reporting views but cannot create or edit content. |
+
+<Note>
+  Roles in PRMS are hierarchical: Admin has the broadest access, and each subsequent role has progressively narrower permissions. If a feature or button is not visible to you, it is likely outside the scope of your current role.
+</Note>
+
+Your role may also be scoped to a specific context — for example, you might be a Member within one Initiative and a Guest across the rest of the portfolio. The menus and result lists you see will reflect this scope.
+
+## Getting access or changing your role
+
+PRMS does not provision user accounts — your account exists because you are in your organization's Active Directory. If you can log in to other CGIAR systems but cannot access PRMS, your account may not yet have been assigned a PRMS role.
+
+<Tip>
+  If you cannot log in, are stuck at a blank screen after signing in, or do not see the Initiatives or results you expect:
+  - Confirm you are using your organization credentials (not a personal email).
+  - Contact your **platform administrator** and ask them to verify that your account has an active PRMS role assigned for the correct Initiative or application scope.
+</Tip>
+
+Platform administrators manage roles through the PRMS admin panel. Changes take effect immediately on the next page load.
+
+## User provisioning
+
+PRMS does not own the user directory. Onboarding new users, updating names, changing email addresses, and deactivating accounts are all handled in Active Directory by your organization's IT team. Once a user exists in the directory, a PRMS admin can assign them a role.
+
+If a colleague has left your organization and their access needs to be revoked, the correct path is to have their Active Directory account disabled by IT, which will prevent them from signing in to PRMS.

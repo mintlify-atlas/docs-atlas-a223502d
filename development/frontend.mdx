@@ -1,0 +1,214 @@
+---
+title: 'Frontend development guide for PRMS (Angular)'
+description: 'Develop the Angular 19 + PrimeNG frontend: page module layout, API service naming, the custom auth header, build commands, and Nginx production serving.'
+keywords: ['Angular', 'PrimeNG', 'frontend', 'SPA', 'Nginx', 'Cypress', 'signals', 'JWT']
+---
+
+The PRMS frontend is an Angular 19 single-page application built with PrimeNG 19 and served behind Nginx in production. This guide covers the page module convention, API service naming, the custom authentication header, build and lint commands, state management, and theming.
+
+## Technology stack
+
+| Component | Technology |
+|---|---|
+| Framework | Angular 19.2 |
+| UI library | PrimeNG 19 + `@primeng/themes/aura` via `reportingTheme.ts` |
+| State management | Angular `signals` + `BehaviorSubject` (no NgRx) |
+| Unit tests | Jest (`jest-preset-angular`) |
+| E2E tests | Cypress |
+| Real-time | `pusher-js` + `ngx-socket-io` |
+| Charts / exports | `chart.js`, `exceljs`, `pdfjs-dist`, `file-saver` |
+| Production server | Nginx (`nginx.conf` + `Dockerfile`) |
+
+## Page module layout
+
+Feature pages live under `onecgiar-pr-client/src/app/pages/<feature>/`. Top-level surfaces include:
+
+- `results/` — Result Creator, Result Detail, Results Outlet
+- `ipsr/` — Innovation Package pathway steps
+- `quality-assurance/` — QA queue and review drawer
+- `admin-section/` — Admin shell (roles, users, phases, parameters)
+- `home/` — Landing page aggregates
+- `type-one-report/` — PMU Type-One Report
+- `result-framework-reporting/` — Cross-cutting reporting flows
+- `outcome-indicator/`, `pdf-reports/`, `whats-new/`
+
+Each feature follows this folder convention:
+
+```
+<feature>/
+├── <feature>.module.ts
+├── <feature>-routing.module.ts
+├── <feature>.component.{ts,html,scss,spec.ts}
+├── <feature>.responsive.scss       # Optional: responsive overrides
+├── components/                     # Feature-only components
+├── pages/                          # Nested route pages
+└── services/                       # Feature-local services
+```
+
+Cross-cutting primitives (shared components, section forms, guards, interceptors, interfaces) live in `src/app/shared/`.
+
+## API service naming
+
+All HTTP methods on API service classes follow the convention `HTTP_METHOD_descriptiveName`. The HTTP verb is the prefix, and the rest is a descriptive camelCase name:
+
+```typescript
+// Good
+GET_resultsList()
+POST_createResult()
+PATCH_updateResultStatus()
+DELETE_removeEvidence()
+
+// Bad — no HTTP verb prefix
+fetchResults()
+create()
+update()
+```
+
+Apply this to new methods on existing services and to any new feature-local service. The main API service is `src/app/shared/services/api/results-api.service.ts`. The aggregating `ApiService` at `src/app/shared/services/api/api.service.ts` exposes all feature services as fields.
+
+## Custom auth header
+
+PRMS uses `auth: <JWT>` as the authentication header — **not** `Authorization: Bearer`. The Angular interceptor (`src/app/shared/interceptors/general-interceptor.service.ts`) attaches the token from local storage to every outgoing request automatically.
+
+<Warning>
+Never send `Authorization: Bearer` — the backend middleware rejects it. The interceptor handles the `auth` header for you. Do not bypass or duplicate it.
+</Warning>
+
+The interceptor also:
+
+- Skips the `auth` header for Elasticsearch requests (those use their own credentials)
+- Triggers a "green checks" refresh after successful `PATCH`/`POST` on a Result Detail route
+- Triggers IPSR completeness refresh for `/api/ipsr/*` calls
+
+If a new flow should not trigger those refreshes, add its URL to the `notValidateList` in `general-interceptor.service.ts`.
+
+## Build and lint commands
+
+Run all commands from the `onecgiar-pr-client/` directory.
+
+<CodeGroup>
+```bash production
+# Production build (output to dist/)
+npm run build
+```
+
+```bash development
+# Development build (source maps, no optimisation)
+npm run build:dev
+
+# Development build with file watching
+npm run watch
+```
+
+```bash serve
+# Serve locally at http://localhost:4200
+npm start
+```
+</CodeGroup>
+
+### Linting
+
+```bash
+# Check for lint errors
+npm run lint
+
+# Auto-fix fixable lint errors
+npm run lint:fix
+```
+
+### E2E testing
+
+<CodeGroup>
+```bash gui
+# Open Cypress Test Runner (interactive)
+npm run cypress:open
+```
+
+```bash headless
+# Run Cypress in CI/headless mode
+npm run cypress:run
+
+# Run with Cypress Cloud recording
+npm run cypress:run:record
+```
+</CodeGroup>
+
+## State management
+
+PRMS does not use NgRx. State is held in injectable services exposed through Angular `signals` or `BehaviorSubject` streams:
+
+```typescript
+// Using signals (preferred for new code)
+readonly resultCount = signal(0);
+readonly isLoading = signal(false);
+
+// Using BehaviorSubject (legacy pattern, still common)
+readonly selectedPhase$ = new BehaviorSubject<Phase | null>(null);
+```
+
+Key shared state containers:
+
+- `DataControlService` — global data control and form-state flags
+- `FieldsManagerService` — field-level read/write and validation state
+- `GlobalVariablesService` — environment-wide flags
+- Phase context lives at the shell level — do not introduce per-page phase pickers
+
+Real-time events from Pusher or WebSockets are treated as hints. Always reconcile via a fresh API call before mutating UI state.
+
+## Internationalization
+
+All user-facing strings must go through `src/app/internationalization/`. Hard-coded English in templates is not permitted.
+
+```typescript
+// Use the terminology pipe in templates
+{{ 'result' | terminology }}
+
+// Or the terminology service in TypeScript
+this.terminologyService.get('result')
+```
+
+## Theming and design tokens
+
+Design tokens are defined in `src/styles/colors.scss` and `src/styles/fonts.scss`, all prefixed with `--pr-` for CSS custom properties and `.pr-` for utility classes. The PrimeNG theme (`src/app/theme/reportingTheme.ts`) mirrors the SCSS tokens using the `@primeng/themes/aura` preset.
+
+**Rule:** when changing a color or typography value, update `src/styles/colors.scss` first, then reflect the change in `reportingTheme.ts`. Never the other way around.
+
+Common token examples:
+
+```scss
+// Color tokens (src/styles/colors.scss)
+--pr-color-primary-300
+--pr-color-result-level-output
+--pr-color-result-level-outcome
+
+// Typography mixin
+@include pr-typography('body-1');
+```
+
+PrimeNG dark mode is explicitly disabled (`darkModeSelector: 'light'` in `app.module.ts`) — dark mode is not supported.
+
+## Production Nginx serving
+
+In production, the compiled Angular SPA is served by Nginx using `onecgiar-pr-client/nginx.conf`. The Nginx configuration handles:
+
+- Serving static files from the Angular output directory
+- Falling back to `index.html` for all routes (required for client-side routing)
+- Cache headers for hashed asset files
+
+```bash
+# Build the frontend Docker image
+cd onecgiar-pr-client
+docker build -t prms-client .
+
+# Run the Nginx container on port 8080
+docker run -p 8080:80 prms-client
+```
+
+## Guards and routing
+
+Top-level routes are assembled in `src/app/shared/routing/routing-data.ts`. Feature modules lazy-load via their own routing modules.
+
+- `check-login.guard.ts` — gates all authenticated routes; redirects to login and preserves the original deep link
+- `check-admin.guard.ts` — gates admin routes; hiding nav items alone is never sufficient
+
+Result Detail deep links preserve the reporting phase via a `?phase=` query parameter.

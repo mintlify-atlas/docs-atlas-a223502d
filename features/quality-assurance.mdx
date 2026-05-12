@@ -1,0 +1,116 @@
+---
+title: "Quality assurance review process in PRMS"
+description: "How QA reviewers assess submitted results, leave structured field-level feedback, control status transitions, and how submitters respond to returned results."
+---
+
+The quality assurance layer in PRMS is the gate that ensures every submitted result meets the evidence, ToC alignment, and completeness standards required by OneCGIAR reporting policy. QA sits between authoring and final submission: results that pass review advance toward `status_id = 3` (Submitted), while results that need improvement are returned to `status_id = 1` (Editing) with structured reviewer comments.
+
+## QA reviewer role
+
+A QA reviewer is a user assigned the QA-review permission for a given initiative or across the portfolio. Reviewers do not own or edit results themselves — they assess the work submitted by result submitters and control the pass/fail transitions. Their responsibilities are:
+
+- Reviewing the full content of submitted results against QA criteria.
+- Leaving structured, field-specific comments for submitters to act on.
+- Advancing results that meet the bar (Editing → Quality Assessed) or returning those that do not.
+- Providing enough commentary that submitters understand exactly what must be fixed before resubmission.
+
+## The review queue
+
+Reviewers access a dedicated quality-assurance surface (`pages/quality-assurance` on the client, backed by `api/result-qaed` on the server). The queue surfaces all results in a submitted or pending-review state for the active phase that fall within the reviewer's scope. Results are presented with their type, lead initiative, geographic scope, and submission timestamp, so reviewers can triage by type or recency.
+
+The `result-qaed` module stores a log of all review actions in the `result_qaed_log` table:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | bigint | Primary key |
+| `result_id` | bigint | The result under review |
+| `qaed_date` | date | Date the review action was taken |
+| `qaed_comments` | text (nullable) | Free-text comment from the reviewer |
+| `qaed_user` | bigint | FK to the user who performed the review |
+
+<Note>
+`qaed_comments` is nullable, allowing a reviewer to pass a result with no comment when the content is satisfactory. A comment is expected, but not required, when passing.
+</Note>
+
+## Review history
+
+Every status transition — submission, QA pass, return, and resubmission — is also recorded in the `result_review_history` table (module `api/results/result-review-history`). This table uses a `ReviewActionEnum` with three possible values:
+
+| Action | Meaning |
+|---|---|
+| `APPROVED` | The reviewer advanced the result (pass). |
+| `REJECTED` | The reviewer returned the result with feedback. |
+| `UPDATE` | An update or edit event was recorded in the history. |
+
+Each `ResultReviewHistory` row captures:
+- `result_id` — which result was affected.
+- `action` — the `ReviewActionEnum` value.
+- `comment` — free text (nullable) explaining the decision.
+- `created_by` — the user who triggered the transition.
+- `created_at` — immutable timestamp set by the database.
+
+The submitter sees the full review history chronologically in the result detail view, so they can track the back-and-forth across multiple review cycles.
+
+## Structured field-level feedback
+
+Reviewers can associate comments with specific sections or fields of a result, not just the result as a whole. This field-specific feedback model means submitters can navigate directly to the section that needs attention rather than re-reading the entire result to find the problem. Common review criteria applied per field type include:
+
+- **Title and description** — clarity, specificity, avoidance of jargon, alignment with the declared type.
+- **Theory of Change alignment** — whether the selected ToC nodes are appropriate and justified.
+- **Evidence** — whether links resolve, whether the evidence source is credible, whether it substantiates the claimed result.
+- **Geography** — whether the geographic scope is appropriately precise and justified.
+- **DAC / impact-area scores** — whether the gender, climate, and other cross-cutting scores are assigned correctly and supported by the narrative.
+- **Type-specific fields** — for example, whether a Knowledge Product has a valid CGSpace handle and MQAP metadata; whether a Capacity Sharing result has participant counts and delivery method; whether a Policy Change has a policy type, stage, and the relevant government institution identified.
+
+## Status transitions controlled by reviewers
+
+<Steps>
+  <Step title="Open result from review queue">
+    The reviewer selects a submitted result from the QA queue. The result-review drawer (or full review panel) loads all fields, evidence links, ToC alignments, and the existing review history in one place, matching the `US-Q1` user story.
+  </Step>
+
+  <Step title="Add structured comments">
+    The reviewer adds comments tied to specific sections. These comments are visible to the submitter as soon as the review action is saved. Reviewers should be specific: a comment like "Evidence link resolves to a page that does not support the claimed reach figure — please provide a direct link to the dataset or publication" is more actionable than a generic "insufficient evidence."
+  </Step>
+
+  <Step title="Pass QA (advance to Quality Assessed)">
+    If the result meets the bar, the reviewer sets `status_id = 2` (Quality Assessed). The `result_qaed_log` receives a row with the date, user, and any comment. The `result_review_history` receives an `APPROVED` row. The submitter is notified in-app and by email (subject to their notification settings).
+
+    A Quality Assessed result is ready for the final confirmed submission step that advances it to `status_id = 3` (Submitted).
+  </Step>
+
+  <Step title="Return to Editing (reject)">
+    If the result does not meet the bar, the reviewer returns it. The server transitions `status_id` back to `1` (Editing) and writes a `result_review_history` row with action `REJECTED` and the reviewer's comment. The submitter is notified with a direct link to the result and can immediately see what needs to change.
+
+    The result re-enters the submitter's work queue. All previously entered data is preserved — the return-to-editing transition is non-destructive.
+  </Step>
+</Steps>
+
+## Submitter response to returned results
+
+When a result is returned from QA, the submitter:
+
+1. Receives an in-app notification and (if enabled) an email pointing to the result.
+2. Opens the result in Editing status and sees the reviewer's comments surfaced in the review history panel, with the specific sections flagged.
+3. Makes the requested changes and re-saves each section.
+4. Re-runs the submission flow once all required fields are complete, returning the result to the QA queue for another pass.
+
+There is no limit on the number of review cycles. Each cycle adds rows to `result_review_history` and `result_qaed_log`, creating a complete audit trail.
+
+## PMU oversight and monitoring
+
+PMU and portfolio leads have access to phase-level dashboards (`api/home`) that aggregate QA metrics aligned with the product goals:
+
+- **M2.1** — percentage of results passing QA on the first review pass. This is the primary data quality health signal. A declining first-pass rate indicates that submitters need more guidance on what QA expects.
+- **M1.1** — percentage of expected results reaching `status_id = 3` before the phase deadline per initiative.
+- **Submission progress views** — counts of results by status per initiative, updated in real time via Pusher events as reviewers and submitters act on results.
+
+PMU can also view the full `result_review_history` for any result through the admin panel, giving visibility into how many review cycles a result required and what feedback was provided.
+
+<Warning>
+Review history is an immutable audit trail. Rows in `result_review_history` cannot be edited or deleted. If a review comment was entered in error, the reviewer should add a corrective comment in a follow-up review action.
+</Warning>
+
+## Non-pooled projects and bilateral context
+
+QA also applies to results linked to non-pooled (bilateral) projects. Bilateral consumers read results through the `/api/bilateral/` surface, which exposes only `status_id = 3` (Submitted) results for each phase. This means that a result with quality issues returned to Editing is automatically excluded from the bilateral payload until it clears QA and is re-submitted — protecting downstream funder reports from containing incomplete or uncertified data.

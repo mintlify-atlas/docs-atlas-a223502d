@@ -1,0 +1,114 @@
+---
+title: "What is PRMS? OneCGIAR Reporting Platform"
+description: "PRMS is the single platform where CGIAR Initiatives, Centers, and partners plan, capture, qualify, and submit reportable results for the OneCGIAR portfolio."
+keywords: ["PRMS", "OneCGIAR", "result reporting", "CGIAR", "planning", "management system"]
+---
+
+PRMS (Planning, Reporting & Management System) is the unified web platform that solves fragmented CGIAR result reporting. Before PRMS, Initiative and Center teams spread their results across spreadsheets, free-text documents, and bespoke tools — producing inconsistent typologies, weak quality controls, and significant manual effort at every submission cycle boundary. PRMS replaces that fragmentation with a single structured system: typed result capture, a defined quality assurance workflow, Theory of Change alignment, and stable payload surfaces for downstream consumers, all scoped to a reporting phase.
+
+## The problem PRMS solves
+
+<AccordionGroup>
+  <Accordion title="Fragmented data across initiatives">
+    Result data was scattered across spreadsheets and Initiative-specific tools, making portfolio-level aggregation unreliable. PRMS captures all results in a single MySQL-backed system of record with a consistent schema.
+  </Accordion>
+  <Accordion title="Inconsistent result typology">
+    The same research output could be reported as different types by different teams, breaking downstream BI and bilateral reporting. PRMS enforces 11 canonical result types drawn from a shared enum, ensuring uniform classification across the portfolio.
+  </Accordion>
+  <Accordion title="Weak quality controls">
+    Evidence, Theory of Change alignment, partner attribution, and DAC cross-cutting scores were captured inconsistently and reviewed too late. PRMS validates these fields server-side before a result can leave the Editing status.
+  </Accordion>
+  <Accordion title="Friction at phase boundaries">
+    Phase rollover, version snapshots, and bilateral exports required manual reconciliation each reporting cycle. PRMS handles this with a dedicated versioning module that snapshots prior-phase data without mutation and opens new phases cleanly.
+  </Accordion>
+</AccordionGroup>
+
+## Who uses PRMS
+
+PRMS serves four primary personas, each with a distinct role in the reporting lifecycle.
+
+<CardGroup cols={2}>
+  <Card title="Result submitter" icon="pen-to-square" href="/guides/result-submitters">
+    Initiative and Center staff who create typed results, attach evidence, align results to Theory of Change outcomes, mark contributing partners and geography, and resolve QA feedback before resubmission.
+  </Card>
+  <Card title="QA reviewer" icon="magnifying-glass-check" href="/guides/qa-reviewers">
+    Reviewers who open a result-review drawer, assess all submitted fields and evidence in one place, add structured comments tied to specific fields or sections, and advance or return results in the workflow.
+  </Card>
+  <Card title="PMU / portfolio lead" icon="chart-line" href="/guides/pmu-portfolio-leads">
+    Portfolio managers who run Type-One Reports, oversee IPSR pathways across their four steps, edit global narratives and impact-area scoring, and monitor submission progress across initiatives per phase.
+  </Card>
+  <Card title="Platform admin" icon="gear" href="/guides/platform-admins">
+    Administrators who manage roles and AD users, open and close reporting phases, trigger CLARISA catalog syncs, configure global parameters, and recover soft-deleted results through the manage-data surface.
+  </Card>
+</CardGroup>
+
+<Note>
+  Bilateral funders and platform-report consumers are secondary, non-interactive personas. They read the typed payload APIs at `/api/bilateral/*` and `/api/platform-report/*`, which are JWT-excluded headless surfaces designed for downstream systems and BI dashboards.
+</Note>
+
+## Result types
+
+PRMS captures results across 11 canonical types defined in `ResultTypeEnum`. Each type carries shared common fields (title, ToC alignment, geography, contributing centers and partners, DAC scores, evidence) plus a type-specific section.
+
+<Tabs>
+  <Tab title="Outcomes and outputs">
+    | Type ID | Name | Description |
+    |---------|------|-------------|
+    | 1 | Policy change | Changes to laws, regulations, policies, or institutional arrangements influenced by CGIAR research |
+    | 2 | Innovation use | Adoption or use of an innovation by end users or scaling partners |
+    | 3 | Capacity change | Strengthened capacities of individuals, organizations, or systems |
+    | 4 | Other outcome | Outcomes that do not fit the above categories |
+    | 8 | Other output | Outputs that do not fit a more specific output type |
+    | 9 | Impact contribution | Documented contributions to impacts at scale |
+  </Tab>
+  <Tab title="Knowledge and innovation">
+    | Type ID | Name | Description |
+    |---------|------|-------------|
+    | 5 | Capacity sharing for development | Training events, workshops, courses, and other capacity-sharing activities |
+    | 6 | Knowledge product | Publications, datasets, tools, or other knowledge outputs with a CGSpace handle |
+    | 7 | Innovation development | New or significantly improved products, processes, or services developed |
+  </Tab>
+  <Tab title="IPSR types">
+    | Type ID | Name | Description |
+    |---------|------|-------------|
+    | 10 | Innovation use (IPSR) | Innovation use captured within an Innovation Package and Scaling Readiness pathway |
+    | 11 | Complementary innovation | Supporting innovations within an IPSR pathway that enable a core innovation package |
+  </Tab>
+</Tabs>
+
+## Submission status flow
+
+Every result moves through a defined status lifecycle. Status transitions are enforced server-side and every transition is recorded in the review history with the acting user, timestamp, and optional comment.
+
+<Steps>
+  <Step title="Editing (status 1)">
+    All results start here. The submitter fills required common fields, type-specific fields, evidence, ToC alignment, geography, and partner attribution. The result can be saved and returned to at any time during an open phase.
+  </Step>
+  <Step title="Quality Assessed (status 2)">
+    The submitter requests QA review. The QA reviewer opens the result in the review drawer, assesses all fields, and either advances the result or returns it with structured field-level comments. A returned result goes back to Editing for the submitter to resolve.
+  </Step>
+  <Step title="Submitted (status 3)">
+    The QA reviewer confirms the result meets quality criteria and advances it to Submitted. This is the terminal state for a reporting cycle. Submitted results feed into Type-One Reports, IPSR framework views, and bilateral export payloads.
+  </Step>
+</Steps>
+
+<Info>
+  Two additional statuses exist: **Discontinued (4)** for results that are no longer being pursued, and **Pending Review (5)**, **Approved (6)**, and **Rejected (7)** for extended review pipeline configurations. The primary workflow for most results is Editing → Quality Assessed → Submitted.
+</Info>
+
+## Explore PRMS
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Step-by-step guide to logging in, creating a result, filling required fields, and submitting for QA review
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Full-stack design: Angular 19 SPA, NestJS 11 backend, MySQL, and all external integrations
+  </Card>
+  <Card title="Core features" icon="star" href="/features/result-capture">
+    Detailed coverage of result capture, QA workflow, IPSR pathways, and phase management
+  </Card>
+  <Card title="User guides" icon="book" href="/guides/result-submitters">
+    Role-specific guides for submitters, QA reviewers, PMU leads, and platform admins
+  </Card>
+</CardGroup>

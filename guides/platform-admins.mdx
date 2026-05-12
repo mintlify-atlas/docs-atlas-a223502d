@@ -1,0 +1,273 @@
+---
+title: 'Platform admins guide for PRMS system configuration'
+description: 'How platform administrators manage roles, users, reporting phases, CLARISA syncs, global parameters, soft-delete recovery, and initiative mappings in PRMS.'
+keywords: ['platform admin', 'role management', 'phase management', 'CLARISA sync', 'global parameters', 'user administration', 'PRMS']
+---
+
+Platform administrators manage the operational configuration that every other PRMS persona depends on. You control who has access to what, how reporting phases open and close, how master data stays current through CLARISA syncs, and how soft-deleted data is recovered. This guide covers all administrative surfaces and the correct sequence for common administrative workflows.
+
+<Warning>
+  Several administrative actions in PRMS are irreversible or have immediate system-wide effects. Phase closures, data deletions, and role changes take effect immediately and cannot be undone without manual database intervention. Read each section fully before executing an administrative action.
+</Warning>
+
+---
+
+## Role management
+
+Roles in PRMS are the primary access-control mechanism. Every user must have at least one role to access system functionality beyond the login page.
+
+### Role types
+
+PRMS uses three role type scopes:
+
+| Role type | Scope | Description |
+|---|---|---|
+| **INITIATIVE** | Scoped to a specific Initiative | Grants access to results and reporting surfaces for one Initiative. |
+| **ACTION_AREA** | Scoped to a specific Action Area | Grants access to Action Area-level views and coordination functions. |
+| **APPLICATION** | Platform-wide | Grants system-level access regardless of Initiative or Action Area. |
+
+### Role levels
+
+Within each role type, users are assigned a role level that determines their permissions:
+
+| Role | Level ID | Typical use |
+|---|---|---|
+| **Admin** | 1 | Full platform access. Can manage roles, phases, parameters, and all data. Assign sparingly. |
+| **Lead** | 3 | Initiative lead. Full read/write access to their Initiative's results and settings. |
+| **Co-Lead** | 4 | Deputy lead. Same access as Lead within the Initiative. |
+| **Coordinator** | 5 | Initiative coordinator. Can manage results and run reports for their Initiative. |
+| **Member** | 6 | Initiative team member. Can create and edit results for their Initiative. |
+| **Guest** | 2 | Read-only access across the platform. |
+| **Action Area Global Director** | 7 | Director-level access across an Action Area. |
+| **Action Area Coordinator** | 8 | Coordinator access within an Action Area. |
+
+Role levels follow a numeric hierarchy — a lower number means higher privilege. A user with role level 1 (Admin) passes any guard that checks for level 3 (Lead) or below.
+
+### Assigning roles to users
+
+Navigate to **Admin → User management** to manage role assignments.
+
+<Steps>
+  <Step title="Search for the user">
+    Use the search box to find the user by name or email address. Users must already exist in the Active Directory (AD) to be searchable — PRMS does not provision AD identities.
+  </Step>
+  <Step title="Open the user's role panel">
+    Click the user's row to expand their role assignments. You will see all current roles grouped by role type.
+  </Step>
+  <Step title="Add a new role">
+    Click **Add role**. Select the role type (INITIATIVE, ACTION_AREA, or APPLICATION), the specific Initiative or Action Area if applicable, and the role level. Confirm the assignment.
+  </Step>
+  <Step title="Remove or modify an existing role">
+    To remove a role, click the delete icon next to the role entry. Changes take effect immediately — the user's session will reflect the new role on their next page load or API call.
+  </Step>
+</Steps>
+
+<Note>
+  Role assignments are enforced at the server level via the `ValidRoleGuard`. Removing a role from a user in the UI does not require any additional cache flush — the guard reads role data on each request.
+</Note>
+
+---
+
+## Managing Active Directory users
+
+PRMS authenticates users via AWS Cognito integrated with Active Directory (AD). The AD user management surface in PRMS allows you to look up AD users and assign them to PRMS roles without requiring direct AD access.
+
+Navigate to **Admin → User management** and use the **AD user lookup** function:
+
+<Steps>
+  <Step title="Search for the AD user">
+    Enter the user's name or email address in the AD search field. The search queries the AD integration layer and returns matching accounts from the directory. This is the same lookup used by the share-request and role-assignment flows elsewhere in PRMS.
+  </Step>
+  <Step title="Verify the user account">
+    Review the returned results to confirm you have the correct person — check both the display name and email address before proceeding. In large organisations, common names may return multiple results.
+  </Step>
+  <Step title="Assign PRMS roles">
+    Once you have identified the correct AD account, use the role-assignment workflow above to grant the appropriate PRMS roles. The user can log in immediately using Cognito once roles are assigned.
+  </Step>
+</Steps>
+
+<Note>
+  PRMS does not own or manage AD identities. You can assign and remove PRMS roles for any AD user, but creating, disabling, or password-resetting AD accounts must be done in the directory itself, outside PRMS.
+</Note>
+
+---
+
+## Phase management
+
+Reporting phases define the temporal scope of all result data. Every result is tied to a phase, and phase boundaries control when submissions open and close.
+
+Navigate to **Admin → Phase management** to see phases for both the **Reporting** module and the **Innovation Package (IPSR)** module. These are managed separately.
+
+### Creating a new phase
+
+<Steps>
+  <Step title="Select the module">
+    Choose whether you are creating a phase for **Reporting** or **Innovation Package** — both have separate phase tables.
+  </Step>
+  <Step title="Enter phase details">
+    Provide the phase name (e.g., "2025 Reporting Phase 1"), the reporting year, and the opening and closing dates. The closing date is the hard deadline after which results cannot be submitted to this phase.
+  </Step>
+  <Step title="Set the phase status to Open">
+    A new phase starts in Closed status. Set it to **Open** only when you are ready for Initiatives to begin submitting. Only one phase per module can be Open at a time.
+  </Step>
+  <Step title="Notify Initiatives">
+    Phase opening is not automatically notified to all users. Use the notification or email channels available to your team to inform Initiative leads that the phase is open.
+  </Step>
+</Steps>
+
+### Closing a phase
+
+<Warning>
+  Phase closure is irreversible. Once a phase is closed, results in Editing status are permanently locked out of that phase's report. Do not close a phase until you have confirmed with PMU leads that all expected results are in Submitted or Quality Assessed status.
+</Warning>
+
+<Steps>
+  <Step title="Confirm with PMU leads">
+    Before closing, check the completeness dashboard with portfolio leads. Confirm that all Initiatives have submitted their expected results and that the QA cycle is complete.
+  </Step>
+  <Step title="Set phase status to Closed">
+    In the phase management table, change the phase status from Open to **Closed**. This takes effect immediately.
+  </Step>
+  <Step title="Verify the snapshot">
+    After closing, spot-check the Type-One Report and bilateral API to confirm the phase snapshot reflects the expected result set. Any discrepancy should be investigated before the data is consumed by downstream systems.
+  </Step>
+</Steps>
+
+### Configuring deadlines
+
+Each phase has a configurable closing date. When the closing date passes, the phase does not close automatically — a platform administrator must manually set the status to Closed. This gives you flexibility to extend deadlines when needed. Update the closing date field in the phase record before the original deadline passes if an extension is approved.
+
+---
+
+## CLARISA sync
+
+CLARISA is the external master-data catalog that PRMS uses for institutions, countries, regions, indicators, and other reference data. PRMS caches CLARISA data locally and syncs on a scheduled basis.
+
+### How syncs work
+
+PRMS runs CLARISA syncs automatically via a scheduled cron job (`clarisaCron.service.ts`). The sync is idempotent — re-running it leaves the cache in the same state as running it once. Sync outcomes are logged to the DynamoDB operational log, accessible at `/logs`.
+
+### Triggering a manual sync
+
+If you need master data to be current immediately (for example, after a new institution is added to CLARISA and a submitter needs to use it), you can trigger an on-demand sync from the admin panel:
+
+<Steps>
+  <Step title="Navigate to the CLARISA sync surface">
+    In the admin section, locate the CLARISA or master data management panel. The exact label may vary by configuration.
+  </Step>
+  <Step title="Initiate the sync">
+    Click **Sync now** or the equivalent action. The sync runs in the background — you do not need to keep the page open.
+  </Step>
+  <Step title="Monitor the sync outcome">
+    Check the operational logs at `/logs` (DynamoDB log surface) or within the admin panel's sync status display. A successful sync will show the number of records updated per catalog. A failed sync will show an error message and the catalog that failed.
+  </Step>
+</Steps>
+
+<Note>
+  PRMS consumes CLARISA; it does not own the catalog. If an institution, country, or indicator is missing or incorrect in PRMS, the fix must be made in CLARISA itself. Once the CLARISA record is updated, trigger a manual sync to pull the change into PRMS.
+</Note>
+
+---
+
+## Global parameters
+
+Global parameters are runtime configuration values that control system behaviour without requiring a code deployment. They are read at request time and cached in memory by the `GlobalParameterCacheService`.
+
+Navigate to the global parameters surface in the admin section to view and edit all parameters.
+
+Common parameters include:
+
+- **Module closure flags** — whether the Reporting module, IPSR module, or entire platform is closed to submissions. Flipping these affects all users immediately.
+- **Phase-level configuration** — parameters that modify behaviour for specific phases.
+- **Feature flags** — toggles for features that are conditionally enabled per environment or phase.
+
+<Steps>
+  <Step title="Locate the parameter to change">
+    Browse the parameter list or use the search box to find the parameter by name. Each parameter entry shows the current value, the data type, and a description of what it controls.
+  </Step>
+  <Step title="Edit the value">
+    Click the edit control next to the parameter. Update the value and save. The change takes effect immediately for all new requests — existing in-flight requests may complete with the old value.
+  </Step>
+  <Step title="Verify the effect">
+    If the parameter controls a visible UI behaviour (such as a module closure), open a new browser tab and navigate to the affected surface to confirm the change is reflected.
+  </Step>
+</Steps>
+
+<Warning>
+  Module closure flags (`resultModuleIsClosed`, `IPSRModuleIsClosed`, `platformIsClosed`) are high-impact parameters. Setting any of these to true prevents all users from submitting results and in some cases from accessing the platform. Confirm with PMU leads before changing these values.
+</Warning>
+
+---
+
+## Soft-delete and recovery
+
+PRMS uses soft-delete for all deletions — records are never permanently removed by user action. Instead, the `is_active` flag is set to `false` and an audit record is written to the `result-deletion-audit` table. Deleted records can be recovered by administrators.
+
+Navigate to **Admin → Manage data** (the `delete-recover-data` surface, sometimes labelled "Manage data" or "Delete and recover data") to access soft-deleted records.
+
+<Steps>
+  <Step title="Search for the deleted record">
+    Use the search interface to find the soft-deleted record by result code, title, or the user who deleted it. The list shows all soft-deleted results for the active phase.
+  </Step>
+  <Step title="Review the deletion audit entry">
+    Each deleted result has an audit record showing who deleted it, when, and any recorded reason. Review this before recovering to confirm the deletion was unintentional.
+  </Step>
+  <Step title="Recover the record">
+    Click **Recover** on the target record. PRMS sets `is_active = true` and the record reappears in the results list for its phase. The submitter who originally owned the result can immediately access and edit it again.
+  </Step>
+</Steps>
+
+<Note>
+  Soft-delete recovery restores the result to its last saved state before deletion. Any unsaved edits the submitter was working on at the time of deletion are not recoverable. Confirm with the submitter what state they expect before recovering.
+</Note>
+
+---
+
+## Initiative-entity mapping
+
+The initiative-entity map controls how Initiatives are associated with institutional entities in PRMS. This mapping is used for access control, reporting aggregation, and bilateral export scoping.
+
+Navigate to the **Initiatives entity** surface (under `/api/initiatives-entity/` on the server side, surfaced in the admin panel) to view and edit mappings.
+
+<Steps>
+  <Step title="Select the Initiative">
+    Choose the Initiative from the dropdown. The current entity mappings for that Initiative are displayed.
+  </Step>
+  <Step title="Add or modify an entity association">
+    Use the entity search to find the CLARISA-registered institution you want to associate. Assign the relationship type and save. The mapping takes effect immediately.
+  </Step>
+  <Step title="Remove an entity association">
+    Click the remove control next to the entity entry. Confirm the removal. Removing a mapping may affect access control for users whose PRMS role is scoped to that entity — verify user role assignments before removing a mapping.
+  </Step>
+</Steps>
+
+---
+
+## User notification settings
+
+PRMS sends in-app and email notifications for key workflow events: result submission, QA outcome, share requests, and phase updates. Users can configure their own notification preferences, but administrators can view and manage notification channel settings at the system level.
+
+Navigate to the **User notification settings** surface to:
+
+- View which notification events are active for each channel (in-app, email).
+- Enable or disable specific notification events system-wide.
+- Verify that the email notification microservice is operational (check the operational logs for delivery failures).
+
+<Note>
+  User-level notification preferences take precedence over system defaults. If a user reports not receiving notifications, check both the system-level settings here and the user's personal notification preferences in their account settings.
+</Note>
+
+<AccordionGroup>
+  <Accordion title="What should I do if the email notification microservice stops delivering messages?">
+    Check the DynamoDB operational logs at `/logs` for error entries from the email notification service. Common causes are: misconfigured SMTP credentials, a network issue between the Lambda function and the email provider, or a RabbitMQ queue backlog. The email service uses RabbitMQ (`amqplib`) — a queue backlog means messages are queued but not consumed. Restart the consumer or clear the DLQ (dead-letter queue) as appropriate. Escalate to the infrastructure team if the issue persists after verifying configuration.
+  </Accordion>
+  <Accordion title="How do I grant a user temporary Admin access without changing their permanent role?">
+    PRMS does not currently support time-limited or scoped temporary role grants. Assigning the Admin role (level 1) grants full platform access immediately and permanently until you remove it. If you need to give a user elevated access for a specific task, assign the Admin role, assist them with the task, and remove the role as soon as the task is complete. Log the action in your team's admin change record.
+  </Accordion>
+  <Accordion title="Can I bulk-import role assignments?">
+    PRMS does not offer a bulk import UI for role assignments. Each user must be assigned roles individually through the user management surface. For large onboarding exercises (e.g., at the start of a new reporting phase), plan for the time required to assign roles one user at a time.
+  </Accordion>
+  <Accordion title="What happens to a result when the submitter's role is removed?">
+    Results are owned by the Initiative or center, not the individual submitter. Removing a user's role does not affect the result record — it remains accessible to other users with appropriate roles for that Initiative. The former submitter loses access to edit or view the result if their role removal eliminates all their PRMS access.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,69 @@
+---
+title: 'External system connections in PRMS'
+description: 'Overview of every external system PRMS integrates with — from catalog data and identity to file storage, messaging, and real-time updates.'
+keywords: ['integrations', 'external systems', 'clarisa', 'cognito', 'cgspace', 'mqap', 's3', 'sharepoint', 'rabbitmq', 'pusher', 'hotjar', 'clarity']
+---
+
+PRMS is a reporting and management platform, not a standalone data island. It connects to a set of external systems to source authoritative data, verify identity, store files, deliver messages, and provide a real-time user experience. None of these systems are owned or operated by PRMS — it integrates with them.
+
+This page gives you a map of every external connection and what it means for you as a user. For the three most significant integrations, dedicated pages go into greater depth.
+
+## Integration map
+
+<CardGroup cols={2}>
+  <Card title="CLARISA" icon="database" href="/integrations/clarisa">
+    The authoritative catalog of CGIAR institutions, centers, initiatives, countries, regions, SDG targets, impact areas, and indicators. Every partner dropdown, center picker, and SDG selector in PRMS is sourced from CLARISA via a scheduled sync. PRMS is a read-only consumer.
+  </Card>
+  <Card title="Theory of Change services" icon="sitemap" href="/integrations/theory-of-change">
+    External ToC management systems that hold each Initiative's impact pathways and outcome trees. When you align a result to a ToC outcome, the list of available outcomes comes from these services. PRMS does not author ToC content.
+  </Card>
+  <Card title="AWS Cognito and Active Directory" icon="lock" href="/integrations/auth-cognito">
+    Identity and authentication. You log in with your organization credentials; Cognito and Active Directory verify who you are and pass that confirmation to PRMS. PRMS does not store your password or manage your account in the directory.
+  </Card>
+  <Card title="CGSpace" icon="link">
+    The CGIAR open-access repository. Knowledge product results in PRMS include a stable **handle identifier** sourced from CGSpace. This handle gives the knowledge product a permanent, citable reference that remains valid regardless of where the document is hosted.
+  </Card>
+  <Card title="MQAP" icon="magnifying-glass">
+    The Metadata and Quality Assessment Platform. For knowledge product results, PRMS can look up additional bibliographic and quality attributes via MQAP. This surfaces data such as open-access status and quality scores without requiring manual entry.
+  </Card>
+  <Card title="AWS S3 and SharePoint" icon="folder-open">
+    Evidence file storage. When you attach a file to a result as supporting evidence — or when PRMS stores documents such as narratives and reports — those files land in AWS S3 or a SharePoint document library, depending on the document type. PRMS manages the links; the files themselves live in these external stores.
+  </Card>
+  <Card title="RabbitMQ" icon="arrow-right-arrow-left">
+    Asynchronous messaging for reporting metadata exports. When large reporting jobs are triggered — such as compiling reporting metadata across a phase — the work is queued in RabbitMQ so it can be processed in the background without blocking your session. You continue working while the export completes.
+  </Card>
+  <Card title="Pusher and WebSockets" icon="bell">
+    Real-time notifications and live updates. When a result you are watching changes status, when a QA comment is added, or when a share request arrives, Pusher delivers the notification to your browser instantly — without you needing to refresh the page.
+  </Card>
+  <Card title="Hotjar and Microsoft Clarity" icon="chart-line">
+    Client-side session analytics. These tools record aggregated, anonymized usage patterns — such as where users click and how they navigate forms — so the PRMS product team can identify usability issues and prioritize improvements. No result content or personally identifiable data is sent to these services.
+  </Card>
+</CardGroup>
+
+## What these integrations mean for your workflow
+
+Most of these connections are invisible during normal use. You do not need to configure them or think about them while submitting results. They become relevant only when something is missing or behaving unexpectedly.
+
+<AccordionGroup>
+  <Accordion title="A partner, center, or country is missing from a dropdown">
+    Catalog dropdowns are sourced from CLARISA. If an entry is missing, it is not in CLARISA — or has been deactivated there. Contact your CLARISA administrator to have the entry added. The change will appear in PRMS within the next sync window (within an hour for priority data, up to 8 hours for other catalogs).
+  </Accordion>
+  <Accordion title="A ToC outcome I expect is not in the list">
+    ToC outcomes come from your Initiative's external ToC service. If an outcome is absent, it may not yet be published in that system. Contact your Initiative's ToC coordinator to have it added at the source.
+  </Accordion>
+  <Accordion title="I cannot log in">
+    Authentication is handled by Cognito and Active Directory. If you can log in to other CGIAR systems but not PRMS, your account may not have a PRMS role assigned. Contact your platform administrator.
+  </Accordion>
+  <Accordion title="An evidence file I uploaded is not loading">
+    Evidence files are stored in AWS S3 or SharePoint. If a file link is broken, it may indicate the file was deleted from the underlying storage, or that a link was saved incorrectly. Contact your platform administrator to investigate.
+  </Accordion>
+  <Accordion title="I am not seeing real-time notifications">
+    Real-time alerts depend on the Pusher connection. If you are behind a strict corporate firewall or proxy, the WebSocket connection may be blocked. In that case, notifications will appear the next time you load the page. Contact your IT team if the issue persists.
+  </Accordion>
+</AccordionGroup>
+
+## A note on ownership
+
+PRMS integrates with these systems but does not own or operate any of them. Requesting changes to catalog data, user accounts, file retention policies, or identity configurations requires contacting the administrators of the relevant external system — not the PRMS platform team.
+
+When something in one of these systems changes (a center's name is updated in CLARISA, a user is removed from Active Directory, a CGSpace handle is minted for a new publication), PRMS picks up the change through its regular sync and connection mechanisms. No manual intervention in PRMS is needed for most updates.

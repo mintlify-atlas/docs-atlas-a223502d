@@ -1,0 +1,202 @@
+---
+title: 'PMU and portfolio leads guide for PRMS oversight'
+description: 'Use PRMS dashboards, Type-One Reports, IPSR pathways, global narratives, and bilateral exports to oversee the full OneCGIAR reporting portfolio.'
+keywords: ['PMU', 'portfolio lead', 'Type-One Report', 'IPSR', 'global narratives', 'dashboard', 'PRMS', 'CGIAR']
+---
+
+PMU and portfolio leads are responsible for the health and completeness of the full OneCGIAR result portfolio across reporting phases. You use PRMS to monitor submission progress, generate consolidated reports, oversee innovation package pathways, author curated narratives, and ensure the data reaching downstream consumers is accurate and complete. This guide covers the tools and views you will use most.
+
+## Dashboard: monitoring the portfolio
+
+The PRMS home screen and the **Result Framework Reporting** landing page give you a phase-aware view of submission progress across all Initiatives.
+
+When you first load the dashboard, PRMS shows:
+
+- **Submission totals by Initiative** — the number of results in each status (Editing, Submitted, Quality Assessed) for the active phase, broken down by Initiative.
+- **Completeness indicators** — a visual progress bar or percentage for each Initiative showing how far along their expected results are toward the Submitted state.
+- **Phase deadline countdown** — the remaining time before the current phase closes, surfaced prominently to help you identify Initiatives at risk of missing the cutoff.
+
+To drill into a specific Initiative, click its row. The **Entity details** view shows the full result list for that Initiative — you can filter by result type, status, or result level to find specific gaps.
+
+<Note>
+  The dashboard reflects the currently active phase. To view prior-phase data, use the phase switcher control in the header. Phase-switching is read-only for prior phases — you cannot edit results from a closed phase.
+</Note>
+
+---
+
+## PMU tools overview
+
+<CardGroup cols={2}>
+  <Card title="Type-One Reports" icon="file-chart-bar" href="/guides/pmu-portfolio-leads#type-one-reports">
+    Consolidated portfolio narrative reports generated per phase. The canonical output for bilateral funders and platform-level communication.
+  </Card>
+  <Card title="IPSR framework view" icon="diagram-project" href="/guides/pmu-portfolio-leads#ipsr-framework-view">
+    Cross-result oversight of Innovation Package and Scaling Readiness (IPSR) pathways across all Initiatives.
+  </Card>
+  <Card title="Global narratives" icon="pen-line" href="/guides/pmu-portfolio-leads#global-narratives">
+    PMU-curated narrative blocks that contextualise portfolio-level data for platform reports and donor communications.
+  </Card>
+  <Card title="Bilateral and platform exports" icon="arrow-up-from-bracket" href="/guides/pmu-portfolio-leads#bilateral-and-platform-exports">
+    Understanding what downstream consumers receive and how to monitor export quality.
+  </Card>
+</CardGroup>
+
+---
+
+## Type-One Reports
+
+Type-One Reports are the primary consolidated output PRMS generates per reporting phase. They aggregate typed results from across the portfolio into a structured narrative that PMU publishes to bilateral funders and for platform-wide communication.
+
+### Accessing and generating a report
+
+Navigate to **Type-One Report** in the top navigation (or the `/type-one-report` route). The report is structured as several sub-sections accessible from a panel menu:
+
+- **Fact sheet** — high-level summary statistics for the phase.
+- **Progress on EoI Outcomes (EOIO)** — progress against End-of-Initiative Outcomes across the portfolio.
+- **Progress on Work Packages** — work-package-level progress summaries.
+- **Key results** — a curated selection of high-impact results for the phase.
+- **Partnerships** — partner contribution data aggregated across all Initiatives.
+- **Portfolio linkages** — cross-Initiative connections and shared results.
+- **Key result story** — a narrative highlight for external audiences.
+
+Each sub-section pulls live data from the PRMS result database scoped to the selected phase. Some sections support PMU-edited narrative blocks where you can add context that raw data alone does not convey.
+
+### What the report contains
+
+The Type-One Report is phase-scoped: it reflects the snapshot of results that were in Submitted or Quality Assessed status at the phase boundary. Results still in Editing at the time the phase closes are not included in the report.
+
+<Tip>
+  Review the report sections before the phase deadline while results can still be corrected. Errors in submitted results (wrong geography, missing evidence) propagate directly into the report and are harder to address after the phase closes.
+</Tip>
+
+---
+
+## IPSR framework view
+
+Innovation Package and Scaling Readiness (IPSR) results follow a four-step pathway that PRMS tracks across all Initiatives. The **IPSR Framework** view gives you cross-portfolio visibility into where each innovation package sits in the pathway.
+
+Navigate to the **IPSR** section in the top navigation to access:
+
+- **Innovation package list** — all IPSR results across the portfolio, with status, step, and Initiative.
+- **Pathway view** — a visual representation of each innovation package moving through the four IPSR steps (Expert workshop assessment, Innovation packaging, Scaling readiness assessment, Scaling deployment).
+- **Completeness status** — section-level completeness for each innovation package, so you can see which steps are blocking pathway progression.
+
+As a portfolio lead, you use this view to:
+
+- Identify innovation packages that are stalled at a particular step and need submitter attention.
+- Verify that the four-step pathway is being reported coherently — a package that skips from step 1 to step 4 without intermediate entries is a data quality issue.
+- Cross-reference innovation packages with the Type-One Report to ensure IPSR results are captured in the portfolio narrative.
+
+<Note>
+  The IPSR module has its own completeness service separate from the main Reporting module. An IPSR result can show as complete in the IPSR pathway view while still having missing fields in the Reporting module, or vice versa. Check both views when assessing IPSR quality.
+</Note>
+
+---
+
+## Global narratives
+
+Global narratives are PMU-curated text blocks that appear in platform-level reports and bilateral outputs. They are not generated from result data — they are written and edited directly by PMU staff.
+
+Navigate to the global narratives surface (accessible from the admin or PMU section, depending on your role configuration). You will see a list of narrative blocks, each associated with a named section of the portfolio report (e.g., "Portfolio overview," "Impact area: Food security," "Gender mainstreaming narrative").
+
+<Steps>
+  <Step title="Select the narrative block to edit">
+    Click the block you want to update. Each block has a title, the phase it applies to, and the current published text.
+  </Step>
+  <Step title="Edit the narrative content">
+    The editor supports rich text including paragraphs, lists, and basic formatting. Write in plain, accessible language appropriate for external stakeholder audiences. Avoid internal jargon and undefined acronyms.
+  </Step>
+  <Step title="Save a draft">
+    Use **Save draft** to preserve your edits without publishing them. Drafts are visible to other PMU editors but are not pushed to downstream consumers yet.
+  </Step>
+  <Step title="Publish the narrative">
+    When the narrative is ready for inclusion in reports and exports, click **Publish**. Published narratives are immediately available in the platform-report API payload. Coordinate with the reporting team before publishing to ensure the timing aligns with phase milestones.
+  </Step>
+</Steps>
+
+<Warning>
+  Narrative blocks are versioned by phase but publishing is not reversible within a phase — once a narrative is published, it appears immediately in downstream exports. Review carefully before publishing, and coordinate with your team to avoid publishing conflicting versions.
+</Warning>
+
+---
+
+## Monitoring QA pass rates and submission completeness
+
+Beyond the dashboard, you have access to detailed completeness and QA pass-rate data to identify where attention is needed.
+
+### Completeness status
+
+Navigate to **Admin → Completeness status** (accessible from the admin module or init-admin section depending on your permissions). This view shows:
+
+- **Section-level completeness per result** — which specific sections (Evidence, ToC, Partners, Geography, DAC) are blocking completion for each result.
+- **Initiative-level completeness rollup** — the percentage of results across each Initiative that have all required sections filled.
+- **Filter by phase, Initiative, and result type** — narrow the view to the most relevant slice.
+
+Use this view to send targeted reminders to submitters. Rather than a generic "please complete your results" message, you can direct them to the specific sections blocking their submission.
+
+### QA pass rates
+
+After each QA review cycle, examine:
+
+- How many results passed QA on the first review versus requiring one or more revisions.
+- Which Initiatives or result types have the lowest first-pass rate.
+- Which QA failure reasons (evidence, ToC, geography, partners, DAC) are most frequent.
+
+High revision rates for a specific Initiative may indicate a need for targeted training or a conversation with the Initiative coordinator about data quality expectations.
+
+---
+
+## Bilateral and platform exports
+
+PRMS exposes two headless API surfaces that downstream consumers — bilateral funders and platform BI tools — read directly:
+
+- **Bilateral API** (`/api/bilateral/*`) — typed result payloads per result type (knowledge product, capacity sharing, innovation development, innovation use, innovation package, policy change). This surface is public (no JWT required) but is not intended for direct submitter use.
+- **Platform report API** (`/api/platform-report/*`) — phase-scoped aggregated payloads for platform-level reporting and BI dashboards.
+
+As a portfolio lead, you do not directly configure these APIs, but you should understand what they expose and how to verify their quality.
+
+### What consumers receive
+
+Each bilateral result payload includes:
+
+- A stable `result_code` identifier that persists across phases.
+- CLARISA-referenced institution IDs (not raw database IDs) for portability across systems.
+- Typed fields specific to the result type — knowledge product metadata, capacity-sharing delivery details, innovation pathway data, etc.
+- Geographic scope, DAC scores, and ToC references in structured form.
+
+### Verifying export quality
+
+Before the phase deadline, spot-check a sample of results from each result type using the bilateral API. Compare the payload against what submitters entered in the PRMS UI. Common discrepancies to look for:
+
+- Results where evidence was added after the initial submission but the bilateral payload reflects the pre-update state (this should not happen if results are re-submitted after edits, but it is worth checking).
+- Geographic scope mismatches — a result marked National in the UI appearing as Global in the export.
+- Missing DAC scores in the payload despite being filled in the UI.
+
+<Tip>
+  The bilateral API payload contract is documented in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md` in the platform repository. Refer to this document when communicating with downstream systems about payload structure — any changes to that structure require a documented change log entry.
+</Tip>
+
+---
+
+## Phase boundaries and snapshot semantics
+
+PRMS is phase-bound: all result reads and writes are scoped to the currently active phase, and each phase produces a data snapshot that is preserved when the phase closes.
+
+### What a phase closure means
+
+When a phase is closed by the platform administrator:
+
+- Results in Editing status are locked in that state. They are not included in the Type-One Report or bilateral exports for that phase.
+- Results in Submitted or Quality Assessed status are included in the phase snapshot.
+- The snapshot is immutable — prior-phase data cannot be edited after closure, even by administrators.
+- A new phase may be opened, at which point prior-phase results can be rolled over into the new phase as a starting point for the next cycle.
+
+### Phase boundary risks
+
+<Warning>
+  Do not wait until the deadline to chase missing submissions. Phase closure is irreversible — a result that is still in Editing when the phase closes cannot be added to that phase's report retrospectively. Build in a buffer of at least one week for QA review cycles before the deadline.
+</Warning>
+
+- **QA cycle time** — a result submitted the day before the deadline may not complete QA review before the phase closes. Encourage submitters to submit at least one week early.
+- **Bilateral export timing** — bilateral consumers may cache phase data at or after the deadline. Ensure all corrections are in Submitted status before the phase closes, not just before a soft deadline.
+- **New phase rollover** — when a new phase opens, administrators roll over prior-phase results. Submitters will see prior-phase data as a baseline and need to update it for the new cycle. As a portfolio lead, coordinate with administrators on rollover timing to give submitters sufficient time.

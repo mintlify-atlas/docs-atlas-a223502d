@@ -1,133 +1,80 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "PRMS: OneCGIAR's Results Reporting Platform"
+description: "PRMS is the single platform where CGIAR Initiatives, Centers, and partners capture, qualify, and submit reportable results for the OneCGIAR portfolio."
 ---
 
-## Setting up
+PRMS (Planning, Reporting & Management System) is the unified web platform for the OneCGIAR portfolio. It gives Initiative and Center staff a structured way to capture typed research results, align them to Theory of Change outcomes, collect evidence, and move them through a quality assurance workflow before submission — all within a single reporting cycle.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Introduction" icon="book-open" href="/introduction">
+    Understand what PRMS does, who uses it, and how the result lifecycle works
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Log in, create your first result, and submit it through the QA workflow
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Explore the full-stack design: Angular frontend, NestJS backend, and key integrations
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Browse all REST endpoints including the bilateral and platform-report surfaces
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Who uses PRMS?
 
-Everything you need to create world-class documentation.
+PRMS serves four primary personas, each with a distinct role in the reporting cycle:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Result Submitters" icon="pen-to-square" href="/guides/result-submitters">
+    Initiative and Center staff who create results, attach evidence, align Theory of Change, and fix QA feedback
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="QA Reviewers" icon="magnifying-glass-check" href="/guides/qa-reviewers">
+    Reviewers who assess submissions, add structured comments by field, and advance or return results
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="PMU / Portfolio Leads" icon="chart-line" href="/guides/pmu-portfolio-leads">
+    Portfolio managers who oversee IPSR pathways, run Type-One Reports, and edit global narratives
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Platform Admins" icon="gear" href="/guides/platform-admins">
+    Administrators who manage roles, phases, CLARISA syncs, parameters, and data recovery
   </Card>
-</Columns>
+</CardGroup>
 
-## Make your content agent ready
+## Core capabilities
 
-Make your docs work for humans and AI agents alike.
+<Steps>
+  <Step title="Capture typed results">
+    Create results across all CGIAR result types — knowledge products, capacity sharing, innovation development and use, IPSR innovation packages, policy change, and others — each with a structured set of common and type-specific fields.
+  </Step>
+  <Step title="Align to Theory of Change">
+    Link each result to one or more Theory of Change outcomes sourced from external ToC services, providing traceability from output to impact pathway.
+  </Step>
+  <Step title="Quality assurance review">
+    Structured QA workflow moves results from **Editing** → **Quality Assessed** → **Submitted**. Reviewers can comment on individual fields; submitters resolve feedback and re-submit.
+  </Step>
+  <Step title="Reporting and export">
+    Consolidated results feed into Type-One Reports, IPSR pathway views, bilateral export payloads, and platform-level reporting surfaces consumed by downstream BI tools and funders.
+  </Step>
+</Steps>
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
+## Explore by topic
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={3}>
+  <Card title="Result capture" icon="clipboard-list" href="/features/result-capture">
+    All nine result types and their shared fields
+  </Card>
+  <Card title="Submission workflow" icon="arrow-right-arrow-left" href="/features/submission-workflow">
+    Status transitions and submission rules
+  </Card>
+  <Card title="IPSR pathways" icon="sitemap" href="/features/ipsr-pathway">
+    Innovation Package authoring and pathway steps
+  </Card>
+  <Card title="CLARISA integration" icon="database" href="/integrations/clarisa">
+    Master data syncs for centers, initiatives, and countries
+  </Card>
+  <Card title="Bilateral API" icon="share-nodes" href="/api/bilateral">
+    JWT-free typed payload surface for bilateral funders
+  </Card>
+  <Card title="Development setup" icon="terminal" href="/development/setup">
+    Clone, configure, and run PRMS locally
+  </Card>
+</CardGroup>

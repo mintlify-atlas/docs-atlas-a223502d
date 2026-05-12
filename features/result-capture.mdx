@@ -1,0 +1,162 @@
+---
+title: "Capturing and structuring results in PRMS"
+description: "A complete guide to PRMS result types, shared common fields, and the type-specific sections that structure each reportable result in the OneCGIAR portfolio."
+---
+
+Every reportable achievement in OneCGIAR flows through a typed result in PRMS. Before a result can move through the submission workflow it must carry a stable identifier, a declared type, a reporting phase, and a complete set of common fields that apply across all types. Type-specific sections then extend the common core with the domain detail that makes each result class meaningful for bilateral consumers, PMU dashboards, and downstream reporting systems.
+
+## Result identification
+
+Each result is assigned a unique, human-readable **result code** at creation time (for example `AR2024000042`). The code is composed of the initiative prefix, the reporting year, and a sequential counter. The code is immutable once generated: it persists across phase rollovers and is the stable identifier exposed in bilateral payloads, CGSpace links, and any external reference. Internal database rows are keyed by a numeric `id`, but the `result_code` is what teams share and search by.
+
+## Result types
+
+PRMS defines eleven distinct result types, each with its own `result_type_id` in the `ResultTypeEnum`:
+
+| Type | ID | Level |
+|---|---|---|
+| Policy Change | 1 | Outcome |
+| Innovation Use | 2 | Outcome |
+| Capacity Change | 3 | Outcome |
+| Other Outcome | 4 | Outcome |
+| Capacity Sharing for Development | 5 | Output |
+| Knowledge Product | 6 | Output |
+| Innovation Development | 7 | Output |
+| Other Output | 8 | Output |
+| Impact Contribution | 9 | Impact |
+| Innovation Use (IPSR) | 10 | IPSR-specific |
+| Complementary Innovation | 11 | IPSR-specific |
+
+Types 10 and 11 are created exclusively within the IPSR pathway (see [IPSR Innovation Package pathway authoring](/features/ipsr-pathway)). All other types are authored through the standard result creator.
+
+<Note>
+A result's type cannot be changed after the first save. If you select the wrong type, you must create a new result.
+</Note>
+
+## Common fields
+
+Every result, regardless of type, carries the following fields. These are enforced by the submission validation layer (`AC-6` in the PRD) before a result can advance beyond Editing status.
+
+**Identity**
+- **Title** — a concise, descriptive title. IPSR packages auto-generate their title from geographic scope and the core innovation.
+- **Description** — a narrative explanation of what the result is and why it matters.
+- **Result type** — selected at creation time; determines which type-specific section appears.
+- **Reporting phase / year** — the versioning phase the result belongs to. All reads and writes are scoped to the active phase by default.
+
+**Attribution**
+- **Lead center** — exactly one center must be marked `is_leading_result = true` via the `ResultsCenters` join. This is mandatory for submission.
+- **Contributing initiatives** — linked via `ResultsByInititiatives`. The lead initiative carries `initiative_role_id = 1`.
+- **Contributing centers** — additional centers participating in delivery.
+- **Contributing partners / institutions** — organizations outside CGIAR, linked via `ResultByInstitutions` with CLARISA institution IDs.
+
+**Geography**
+- **Geographic scope** — a scope level (global, regional, national, sub-national, or not applicable).
+- **Regions** — CLARISA regions selected when scope is regional.
+- **Countries** — CLARISA countries, with optional sub-national breakdowns when scope is sub-national.
+
+**Theory of Change alignment**
+- **ToC links** — one or more mappings to Theory of Change outcome/output nodes from the initiative's ToC tree, stored in `ResultsTocResults`. At least one ToC row is required for submission on most result types.
+
+**Evidence**
+- **Evidence links** — URLs or references to supporting documents. Stored in `Evidences` with a type discriminator (`EvidenceTypes`). At least one valid evidence row is required before submission.
+
+**DAC cross-cutting scores**
+- **Gender tag level** — a score reflecting how substantively the result addresses gender equality.
+- **Climate change score** — impact area scoring via `ResultsImpactAreaIndicators`.
+- **Nutrition, poverty, environment scores** — additional DAC / impact-area cross-cutting dimensions captured in `ImpactAreasScoresComponents`.
+
+**Tags and metadata**
+- **Result questions / answers** — a configurable "Is this result related to…" question engine that drives conditional logic for some types.
+- **Legacy result link** — for results migrated from pre-PRMS reporting, a pointer to the legacy record.
+
+## Type-specific fields
+
+<Tabs>
+  <Tab title="Knowledge Product">
+    Knowledge products (`result_type_id = 6`) represent research publications, datasets, tools, and other discrete intellectual outputs intended for broad use.
+
+    **CGSpace handle** — a persistent handle (e.g., `https://hdl.handle.net/10568/...`) registered in CGSpace, the CGIAR institutional repository. The handle is the authoritative external identifier for the knowledge product and appears in the bilateral payload.
+
+    **MQAP attributes** — the PRMS `m-qap` module calls the external MQAP (Metadata Quality Assessment Portal) service to retrieve structured bibliometric metadata: FAIR score components, open-access status, journal name, DOI, publication year, and author list. These are stored in `results-knowledge-products` and `KnowledgeProductFairBaseline`.
+
+    **Knowledge product type** — the form of the output (peer-reviewed article, policy brief, data package, software tool, etc.), drawn from a CLARISA-backed catalog.
+
+    **Dissemination channels** — where and how the product has been or will be shared.
+
+    <Note>
+    The MQAP fetch runs automatically when you save a CGSpace handle. If MQAP is unavailable, the handle is saved and the fetch is retried on next load.
+    </Note>
+  </Tab>
+
+  <Tab title="Capacity Sharing">
+    Capacity sharing for development (`result_type_id = 5`) covers training events, workshops, courses, and other structured learning activities delivered by CGIAR staff to external participants.
+
+    **Delivery methods** — how the training was delivered (in-person, online, blended, etc.), stored in `capdevs-delivery-methods`.
+
+    **Capacity development terms** — the duration, frequency, or modality categories that classify the event (short course, degree program, workshop series, etc.), stored in `capdevs-terms`.
+
+    **On-behalf institution** — the institution on whose behalf CGIAR delivered the training, linked via `ResultByInstitutions` with `institution_roles_id = 3`.
+
+    **Participant counts** — disaggregated numbers of participants by sex and youth status, captured in the result-actors table.
+
+    **Delivery partner institutions** — organizations co-delivering the capacity sharing activity.
+  </Tab>
+
+  <Tab title="Policy Change">
+    Policy change results (`result_type_id = 1`) document CGIAR contributions to formal changes in legislation, regulations, strategies, or institutional policies.
+
+    **Policy type** — drawn from the CLARISA `clarisa-policy-types` catalog (e.g., legislation, national strategy, institutional policy, regulation).
+
+    **Policy stage** — the stage the policy has reached (awareness/interest, adoption, implementation, scaling), from the CLARISA catalog.
+
+    **Policy-relevant institutions** — the government bodies, regulatory agencies, or inter-governmental organizations that own or adopted the policy, linked via `ResultByInstitutions`.
+
+    **Related "Is this result related to…" answers** — the result-questions engine flags policy-specific dimensions (e.g., cross-cutting themes, multi-stakeholder engagement) that appear as conditional prompts in the editing UI.
+
+    **Geographic and governance scope** — mandatory precise geography reflecting the jurisdiction of the policy change.
+  </Tab>
+
+  <Tab title="Innovation Development">
+    Innovation development results (`result_type_id = 7`) document the creation or significant improvement of a product, practice, service, or process intended for scaling.
+
+    **Innovation readiness level** — a CLARISA-sourced readiness level (analogous to TRL) indicating how mature the innovation is at reporting time.
+
+    **Innovation use level** — the level of documented uptake, drawn from the same CLARISA catalog.
+
+    **Innovation type** — the category of innovation (variety, practice, service, tool, etc.).
+
+    **Intellectual property status** — whether any IP protection is relevant, captured as a question in the result-questions engine. When IP contact is requested, the submissions service notifies designated IP experts by email on first submission.
+
+    **Scaling readiness and IPSR link** — an Innovation Development result can serve as the "core innovation" for an IPSR innovation package. Once linked, IPSR pathway steps are authored on a separate IPSR result record that references this development result.
+  </Tab>
+
+  <Tab title="Innovation Use">
+    Innovation use results (`result_type_id = 2`) document the adoption, adaptation, or scaling of an existing CGIAR innovation by end users.
+
+    **Actors** — disaggregated counts of individuals using the innovation, stored in `ResultActors`, with sex and age (youth/non-youth) breakdowns. An "other actor type" free-text field is available when the actor type is not in the controlled catalog.
+
+    **Organization types** — types of organizations using the innovation, linked via `ResultByInstitutionTypes` with quantity counts.
+
+    **Measures** — quantitative measures of uptake (e.g., "50,000 hectares", "12,000 households"), stored in `ResultIpMeasures` as a unit-of-measure + quantity pair.
+
+    **Linked innovation development result** — a direct link to the Innovation Development result that produced the innovation being used, captured in `linked-results`.
+  </Tab>
+
+  <Tab title="Other Types">
+    **Capacity Change (`result_type_id = 3`)** — documents shifts in the skills, knowledge, or institutional capabilities of organizations or individuals as a result of CGIAR engagement. Shares the actor-disaggregation pattern with Innovation Use.
+
+    **Other Outcome (`result_type_id = 4`)** — a catch-all for outcome-level contributions not fitting the Policy Change, Innovation Use, or Capacity Change frames. Requires strong ToC alignment to justify use.
+
+    **Other Output (`result_type_id = 8`)** — a catch-all for output-level contributions not fitting Knowledge Product or Capacity Sharing. Guidance encourages teams to prefer the specific types where possible.
+
+    **Impact Contribution (`result_type_id = 9`)** — documents a direct, attributable contribution to a long-term impact goal (food security, income, environmental sustainability). High evidence bar; requires strong causal narrative and DAC scoring.
+  </Tab>
+</Tabs>
+
+## Autosave and validation
+
+The result editing UI saves automatically as users navigate between sections. Server-side validation runs at each save to return field-level errors. Full submission validation — including the requirement for at least one ToC row, one evidence row, and a marked lead center — runs server-side when the submitter attempts to advance the status. Required-field failures are returned as a structured validation object that the UI renders inline, preventing submission until all blockers are resolved.
+
+## Phase scoping and result codes
+
+Results are always read and written within the **active reporting phase**. When a new phase opens, the versioning module snapshots prior-phase data without mutating it, so historical submissions remain unchanged. The `result_code` persists across rollovers; the internal `version_id` (phase FK) is what distinguishes the active record from its prior-phase snapshot.

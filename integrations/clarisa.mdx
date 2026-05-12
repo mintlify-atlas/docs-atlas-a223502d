@@ -1,0 +1,81 @@
+---
+title: 'CLARISA master data integration in PRMS'
+description: 'How PRMS uses CLARISA as its authoritative catalog for institutions, centers, initiatives, countries, regions, and indicators across CGIAR.'
+keywords: ['clarisa', 'master data', 'catalog', 'institutions', 'centers', 'initiatives', 'sync', 'cgiar']
+---
+
+PRMS does not maintain its own lists of CGIAR institutions, centers, countries, or indicators. Instead, every dropdown and catalog in PRMS that involves these entities draws from **CLARISA** — the authoritative master data registry for the CGIAR portfolio. When you select a partner organization, a lead center, a country, or an SDG target in PRMS, the list you see came from CLARISA.
+
+## What CLARISA is
+
+CLARISA (CGIAR List of International Research Institutions for Sustainability and Assessment) is the shared reference catalog that the entire CGIAR system uses to identify and describe its organizations and research entities. It is maintained independently of PRMS, by CGIAR system administrators.
+
+PRMS is a **read-only consumer** of CLARISA. It never modifies CLARISA data — it only reads from it.
+
+## What data CLARISA provides to PRMS
+
+PRMS syncs the following catalogs from CLARISA:
+
+<CardGroup cols={2}>
+  <Card title="Institutions and centers" icon="building">
+    The full list of CGIAR Centers and partner institutions (NGOs, universities, government bodies, and more), each with their type, headquarters country, and website.
+  </Card>
+  <Card title="Initiatives and portfolios" icon="flag">
+    The OneCGIAR Initiatives and sub-portfolios, used to assign results to the correct organizational unit and to filter reporting by initiative.
+  </Card>
+  <Card title="Countries and regions" icon="globe">
+    ISO-coded countries and UN/CGIAR regions, used when you specify the geographic scope of a result — from a single country to a global reach.
+  </Card>
+  <Card title="SDGs and SDG targets" icon="leaf">
+    The 17 Sustainable Development Goals and their detailed targets, used to link results to the UN 2030 Agenda.
+  </Card>
+  <Card title="Impact areas and indicators" icon="chart-bar">
+    CGIAR impact areas (Nutrition, Poverty, Gender, Climate, Environment, Water) and the quantitative indicators that measure contributions to each.
+  </Card>
+  <Card title="Action areas and outcomes" icon="bullseye">
+    Action area frameworks and their associated outcome statements, used for results that contribute to CGIAR system-level action areas.
+  </Card>
+  <Card title="Innovation types and readiness levels" icon="lightbulb">
+    Standardized classification schemes for innovation development and innovation package results.
+  </Card>
+  <Card title="Geographic scopes and policy types" icon="map">
+    Controlled vocabularies for geographic scope, policy stages, and study types used across multiple result types.
+  </Card>
+</CardGroup>
+
+## How the sync works
+
+PRMS keeps a local copy of all CLARISA catalogs in its own database. A background sync job runs **every 8 hours** and pulls the latest data from CLARISA. Higher-priority catalogs — the ones most likely to change during an active reporting phase — are also refreshed **every hour**.
+
+This means:
+
+- You do not need to wait for a real-time connection to CLARISA each time you open a form. Catalog dropdowns load from PRMS's local cache, which is kept current automatically.
+- Changes made in CLARISA (a new institution is registered, a center's name is updated) appear in PRMS within the next sync window — typically within an hour for high-priority data, and within 8 hours for the rest.
+
+<Info>
+  Sync jobs run automatically in production. You do not need to trigger them manually under normal operation. Admins can initiate a manual sync from the admin panel if time-sensitive updates are needed.
+</Info>
+
+## What this means when you use PRMS
+
+When you are filling out a result, the selections available to you in partner, center, country, region, and indicator fields reflect the current CLARISA catalog. Specifically:
+
+- **Adding a contributing partner** — the institution list comes from CLARISA's full institution registry.
+- **Selecting a lead or contributing center** — the center list reflects the active CGIAR Centers registered in CLARISA.
+- **Choosing a geographic scope** — countries and regions are the ISO-coded CLARISA country and UN/CGIAR region catalogs.
+- **Tagging an SDG** — the goals and targets come directly from the CLARISA SDG catalog.
+- **Selecting an impact area indicator** — the indicators and their targets are sourced from CLARISA's impact area indicator registry.
+
+## What to do if a catalog entry is missing
+
+If you cannot find an institution, center, or country that you expect to be there, the most likely explanation is that the entry is not yet registered in CLARISA — or has been deactivated.
+
+<Warning>
+  PRMS does not own catalog data. If a partner institution, center, or other entity is missing from the dropdown, contact your **CLARISA administrator** to have the entry added or updated at the source. Changes made in CLARISA will flow into PRMS automatically at the next sync.
+</Warning>
+
+PRMS platform admins cannot add new institutions or centers directly — all such changes must go through CLARISA.
+
+## Important: PRMS does not write to CLARISA
+
+The integration is strictly one-directional. PRMS reads catalog data from CLARISA; it does not push result data, user data, or any other PRMS content back to CLARISA. Your results, evidence, and partner contributions live in PRMS, not in CLARISA.

@@ -1,0 +1,139 @@
+---
+title: "Platform report API — portfolio-level payloads"
+description: "JWT-excluded read-only endpoints that generate per-result and IPSR PDF reports for platform-level dashboards and narrative pipelines."
+---
+
+The Platform Report API (`/api/platform-report/*`) is a headless, read-only payload surface that produces per-result and IPSR report documents for platform-level consumers. Like the Bilateral API, it is excluded from JWT enforcement in PRMS and is instead protected at the infrastructure perimeter. Unlike the Bilateral API, platform-report endpoints **are subject to the global rate throttle** (100 requests per 60 seconds).
+
+<Note>
+  `/api/platform-report/*` endpoints do **not** require a JWT. Authentication and access control are enforced at the infrastructure perimeter (API Gateway / IP allowlist), not inside NestJS. Rate throttling **does apply** to this surface — plan for the 100 req / 60 s limit.
+</Note>
+
+<Note>
+  This surface is **read-only**. All writes — creating, editing, or submitting results — go through the authenticated `/api/*` endpoints, which require a valid `auth: <JWT>` header.
+</Note>
+
+## How platform-report differs from bilateral
+
+The two JWT-excluded surfaces serve different consumers and different data shapes:
+
+| | `/api/bilateral/*` | `/api/platform-report/*` |
+|---|---|---|
+| **Primary output** | Typed result summary objects (JSON arrays) | Per-result and IPSR PDF report documents |
+| **Consumer** | Bilateral funders, discovery tools, BI dashboards | PMU reporting pipelines, platform narrative generation |
+| **Rate throttling** | Exempt (`ThrottlerExcludeBilateralGuard`) | Applies (100 req / 60 s global limit) |
+| **Response format** | Raw JSON array | `{ pdf: string, fileName: string }` |
+| **Phase-aware** | Via `phase_year` query param | Via `phase` query param |
+| **IPSR support** | Inline via `ipsr_pathway_summary` on each result | Dedicated `/ipsr/:code` endpoint |
+
+## Endpoints
+
+All platform-report routes are mounted under `/api/platform-report/`.
+
+### Full result report
+
+```
+GET /api/platform-report/result/:code
+```
+
+Generates a full PDF report for a single result, identified by its public-facing `result_code`. Returns the rendered PDF as a base64-encoded string alongside a suggested filename.
+
+**Path parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `code` | string | The result's public `result_code` (e.g. `28738`). |
+
+**Query parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `phase` | string | Reporting phase identifier. Required for phase-scoped rendering. |
+| `downloadable` | boolean | When `true`, the response is optimized for direct download. |
+
+**Response**
+
+```typescript
+{ pdf: string; fileName: string }
+```
+
+<ResponseField name="pdf" type="string">
+  Base64-encoded PDF document for the result.
+</ResponseField>
+
+<ResponseField name="fileName" type="string">
+  Suggested file name for the generated PDF.
+</ResponseField>
+
+### Full IPSR report
+
+```
+GET /api/platform-report/ipsr/:code
+```
+
+Generates a full PDF report for an Innovation Package and Scaling Readiness (IPSR) result. Uses the IPSR-specific PDF template rather than the standard result template.
+
+**Path parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `code` | string | The result code of the innovation package result. |
+
+**Query parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `phase` | string | Reporting phase identifier for IPSR rendering. |
+| `downloadable` | boolean | When `true`, the response is optimized for direct download. |
+
+**Response**
+
+Same shape as the result report endpoint: `{ pdf: string, fileName: string }`.
+
+## PDF template routing
+
+The platform-report service routes PDF generation to the appropriate template based on the portfolio and result type:
+
+| Portfolio | Result type | Template |
+|---|---|---|
+| P25 | Standard results | `results_p25` (600 × 1000 px) |
+| P25 | Bilateral results (non-SGP-02) | `results_bilaterals_p25` (600 × 1000 px) |
+| P25 | Innovation package / complementary (type ids 10, 11) | `ipsr_p25` (600 × 1000 px) |
+| Legacy (P22) | All types | Legacy `pdf.generate` flow |
+
+<Tip>
+  Portfolio P25 uses the `pdf.generateUrl` RabbitMQ event pattern with an explicit `templateName` and paper dimensions. Legacy portfolios use the `pdf.generate` flow. The routing is automatic based on the portfolio acronym stored with the result's reporting phase.
+</Tip>
+
+## How PMU uses this surface
+
+Platform-level reporting in PRMS works as follows:
+
+1. PMU leads access result data through the authenticated PRMS UI, which writes results through `/api/results/*`.
+2. For consolidated exports and narrative generation, the platform-report API generates per-result PDF views on demand.
+3. These PDFs can be embedded in platform-level dashboards or collected into narrative packages per phase.
+4. IPSR innovation packages have a dedicated endpoint (`/ipsr/:code`) that uses the IPSR-specific template, reflecting the four-step pathway structure (core innovation, complementary innovations, scaling readiness, investments).
+
+## Rate limits
+
+The platform-report surface uses the global NestJS throttler:
+
+- **Limit:** 100 requests per 60 seconds (per IP / client identity as configured at the gateway).
+- **Bilateral comparison:** the Bilateral API (`/api/bilateral/*`) is fully exempt from this throttle via `ThrottlerExcludeBilateralGuard`; platform-report is not.
+
+If your integration needs to generate large batches of PDFs, implement request queuing or backoff on the caller side.
+
+<Warning>
+  Generating PDFs for many results in a tight loop will hit the throttle limit. Spread requests across time or implement a queue with backoff. The throttle is enforced per NestJS instance — API Gateway may impose additional limits.
+</Warning>
+
+## Error responses
+
+On failure (invalid result code, missing phase, generation error), the endpoint returns a `returnErrorDto` structure. Handle non-2xx HTTP status codes and check the response body for an `error` or `message` field.
+
+## Integration notes
+
+- **Phase scoping:** always supply the `phase` query parameter. Results in PRMS are phase-versioned; omitting the phase may return data from the wrong reporting cycle or cause an error.
+- **No writes:** this surface does not accept `POST`, `PUT`, or `DELETE`. All result data mutations go through `/api/results/*` with a valid `auth` JWT header.
+- **Authentication header:** because this surface is JWT-excluded, do not send an `auth` header. If your client sends it automatically, it is ignored but does not cause a rejection.
+- **Content type:** the `pdf` field contains a base64-encoded binary. Decode it before writing to disk or streaming to a browser download.

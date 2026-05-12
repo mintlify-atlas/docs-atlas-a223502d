@@ -1,0 +1,133 @@
+---
+title: "Authenticating requests to the PRMS API"
+description: "Pass the custom auth header on every PRMS API request, handle 401 token expiry responses, and understand how roles control endpoint access."
+keywords: ["PRMS", "authentication", "JWT", "auth header", "token", "401", "role-based access"]
+---
+
+Most PRMS API endpoints require a valid JSON Web Token (JWT). This page explains how to obtain a token, how to include it in requests, and how to handle authentication errors.
+
+## Which endpoints require authentication
+
+JWT authentication is enforced on all requests to:
+
+- `/api/*` — all main application endpoints
+- `/clarisa/*` — CLARISA catalog proxy
+- `/toc/*` — Theory of Change endpoints
+- `/type-one-report` — PMU consolidated report
+
+Two sub-paths under `/api/` are **not** authenticated by PRMS itself — they are protected at the network perimeter (API Gateway / IP allowlist):
+
+- `/api/bilateral/*` — bilateral result summaries
+- `/api/platform-report/*` — platform report payloads
+
+Do not rely on PRMS middleware for access control on those two paths. If you are integrating with them, coordinate with your infrastructure team to confirm the perimeter controls that apply to your environment.
+
+## The auth header
+
+PRMS uses a custom request header named `auth` to carry the JWT. This is not the standard `Authorization` header.
+
+<Note>
+The token header is `auth`, not `Authorization`. The PRMS middleware reads `req.headers['auth']` directly. Sending the token as `Authorization: Bearer <token>` will not work — the middleware will reject the request with a 401.
+</Note>
+
+<ParamField header="auth" type="string" required>
+  JWT token obtained from the /auth/* endpoints. Pass the raw token string — no `Bearer` prefix.
+</ParamField>
+
+<Warning>
+Do not send `Authorization: Basic ...` credentials. The middleware explicitly rejects Basic auth and returns a 401 with `shouldRedirectToLogin: true`. There is no fallback — Basic authentication is not supported on any PRMS endpoint.
+</Warning>
+
+### Example authenticated request
+
+```bash
+curl -H "auth: <your-jwt-token>" https://api.example.com/api/results
+```
+
+Replace `<your-jwt-token>` with the token string returned by the `/auth/*` login flow. Do not add a `Bearer` prefix or wrap the value in quotes inside the header.
+
+## Obtaining a token
+
+Tokens are issued by the `/auth/*` endpoints using your organisation's Cognito or Active Directory credentials. The exact flow depends on your identity provider:
+
+- **Cognito / OIDC:** call `/auth/login/provider` with the provider authorization code.
+- **AD / custom credentials:** call `/auth/login/custom` with your credentials.
+- **Code validation:** `/auth/validate/code` is used as part of the multi-step AD flow.
+
+These endpoints are public (no token required to call them) and return a JWT on successful authentication. Store the token securely and include it in subsequent requests via the `auth` header.
+
+## Token expiry and refresh
+
+Tokens expire. On every successful authenticated request, PRMS issues a **fresh token** in the `auth` response header, implementing a rolling session. Your HTTP client should read the `auth` header from each response and use the new value for the next request.
+
+When a token cannot be refreshed automatically and you send an expired one, the API returns:
+
+```json
+{
+  "statusCode": 401,
+  "message": "Token has expired",
+  "response": {
+    "valid": false,
+    "shouldRefreshToken": true
+  }
+}
+```
+
+When `shouldRefreshToken: true`, call the appropriate `/auth/*` refresh endpoint to obtain a new token without requiring the user to re-enter credentials.
+
+## Handling 401 responses
+
+The `response` field in a 401 body tells you what action to take:
+
+| Field | Value | Meaning | Action |
+|---|---|---|---|
+| `shouldRefreshToken` | `true` | Token has expired but the session may be recoverable. | Call `/auth/*` to refresh the token. |
+| `shouldRedirectToLogin` | `true` | Token is invalid, malformed, missing, or Basic auth was sent. | Re-authenticate via the login flow. |
+
+```json
+{
+  "statusCode": 401,
+  "message": "Invalid token",
+  "response": {
+    "valid": false,
+    "shouldRedirectToLogin": true
+  }
+}
+```
+
+## Role-based access control
+
+Some endpoints are protected by role requirements in addition to JWT authentication. If your token is valid but your account does not hold the required role, the API returns `403 Forbidden`.
+
+Roles are defined in two dimensions:
+
+**Role level** (lower number = more privileged):
+
+| Role | Level |
+|---|---|
+| Admin | 1 |
+| Guest | 2 |
+| Lead | 3 |
+| Co-Lead | 4 |
+| Coordinator | 5 |
+| Member | 6 |
+| Action Area Global Director | 7 |
+| Action Area Coordinator | 8 |
+
+**Role type** (the scope the role applies to):
+
+- `Initiative` — scoped to a specific initiative.
+- `Action_Area` — scoped to an action area.
+- `Application` — application-wide.
+
+A user is authorized when their assigned role level is equal to or higher in privilege than the minimum required by the endpoint. The endpoint documentation will state the minimum role required where relevant.
+
+## Using the Swagger UI
+
+The interactive documentation at `http://localhost:3000/api` (development) is configured to use the same `auth` header. When you open the Swagger UI:
+
+1. Click **Authorize** at the top right.
+2. Enter your JWT token in the `auth` field (no prefix).
+3. Click **Authorize** and close the dialog.
+
+All subsequent requests made through the Swagger UI will include your token in the `auth` header automatically.

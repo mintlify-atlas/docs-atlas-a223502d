@@ -1,0 +1,168 @@
+---
+title: "Type-One Report API for PMU reporting"
+description: "JWT-required PMU consolidated report at /type-one-report. Provides per-initiative fact sheets, key result stories, and primary impact area data by phase."
+---
+
+The Type-One Report API (`/type-one-report`) is the PMU consolidated report surface in PRMS. It aggregates initiative-level fact sheets and key result stories from all submitted results per reporting phase, and provides primary impact area data for portfolio-level narrative generation. Access requires a valid PRMS JWT — this surface is **not** open to unauthenticated consumers.
+
+<Warning>
+  `/type-one-report` endpoints **require JWT authentication**. Unlike `/api/bilateral/*` and `/api/platform-report/*`, this route has `JwtMiddleware` bound to it separately in `app.module.ts`. Requests without a valid `auth: <JWT>` header will receive a `401` response.
+</Warning>
+
+## Auth header
+
+PRMS uses a **custom `auth` header** for JWT tokens, not `Authorization: Bearer`. Pass the JWT as:
+
+```
+auth: <your-jwt-token>
+```
+
+The middleware re-signs and returns a fresh `auth` header on each response for rolling sessions. Your client should pick up and store the refreshed token from the response header.
+
+## Mount point
+
+Type-One Report is mounted at the **top level**, not under `/api/`:
+
+```
+/type-one-report
+```
+
+This is a deliberate routing decision in `main.routes.ts` — the route sits outside `ModulesRoutes` and has its JWT middleware binding applied separately in `app.module.ts`. Do not expect it to appear under `/api/type-one-report`.
+
+## Who uses Type-One Reports
+
+<ResponseField name="Primary users" type="PMU leads">
+  PMU (Portfolio Management Unit) leads access Type-One Reports to get a consolidated view of all submitted results and initiative-level summaries for a given reporting phase. The API backing this requires PMU-level role (`RoleEnum.LEAD` or higher on `RoleTypeEnum.APPLICATION`).
+</ResponseField>
+
+The Type-One Report surface feeds:
+
+- **Initiative fact sheets** — structured summaries per initiative, combining result counts, ToC alignment, and cross-cutting marker scores.
+- **Key result stories** — curated narrative outputs per initiative for a specific phase, used in portfolio-level reporting documents.
+- **Primary impact area analysis** — a nested sub-module at `/type-one-report/primary/` that provides impact area breakdowns for PMU-level reporting views.
+
+## Endpoints
+
+### Fact sheet by initiative
+
+```
+GET /type-one-report/fact-sheet/initiative/:initId
+```
+
+Returns the fact sheet for a specific initiative, identified by its internal `initId`. The fact sheet aggregates result-level data from all submitted results linked to the initiative for the current phase.
+
+**Path parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `initId` | number | Internal initiative id in PRMS. |
+
+**Response**
+
+Wrapped in the standard PRMS response envelope by `ResponseInterceptor`:
+
+```json
+{
+  "response": { /* fact sheet data */ },
+  "statusCode": 200,
+  "message": "…",
+  "timestamp": "…",
+  "path": "…"
+}
+```
+
+### Key result story by initiative
+
+```
+GET /type-one-report/key-result-story/initiative/:initId?phase=<phaseId>
+```
+
+Returns the key result story for an initiative within a specific reporting phase. Key result stories are the PMU-curated narrative outputs used in Type-One Reports.
+
+**Path parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `initId` | number | Internal initiative id in PRMS. |
+
+**Query parameters**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `phase` | number | Yes | Reporting phase id. Results are scoped to this phase. |
+
+**Response**
+
+Wrapped in the standard PRMS response envelope.
+
+### Primary impact area sub-module
+
+```
+GET /type-one-report/primary/...
+```
+
+The `primary/` sub-module (`PrimaryImpactAreaModule`) provides impact area breakdown data for Type-One Report views. It is mounted as a child route at `/type-one-report/primary/`. Consult the `primary-impact-area.controller.ts` for the specific endpoints within this sub-module.
+
+## Phased access
+
+Type-One Reports are **generated per reporting phase**. Key behaviors:
+
+- The `phase` query parameter on `/key-result-story` scopes the response to a specific reporting phase.
+- Results are only included in Type-One Report views once they reach `status_id = 3` (Submitted). Results in `Editing` or `Quality Assessed` status are not reflected.
+- PMU leads typically access Type-One Reports after the submission window for a phase has closed.
+
+<Note>
+  Phase ids in PRMS are numeric. The human-readable phase year (e.g. `2025`) maps to an internal phase/version id. Use the `/api/versioning/*` endpoints to look up phase ids if you are building an integration that needs to be phase-aware.
+</Note>
+
+## BI integration
+
+The Type-One Report surface integrates with the `result-dashboard-bi` module at `/result-dashboard-bi/*`. PMU users accessing the Type-One Report section in the PRMS UI see embedded BI views (Power BI or similar) alongside the structured fact sheet and key result story data. The BI embed layer requires its own credentials and is managed separately from the Type-One Report API.
+
+## Accessing Type-One Reports in PRMS
+
+As a PMU user, Type-One Reports are available through the PRMS web interface:
+
+1. Log in to PRMS with a PMU-level account.
+2. Navigate to the **Type-One Report** section in the main navigation.
+3. Select the reporting phase and initiative to view the consolidated report.
+4. The API endpoints documented here back the data layer of these views. Direct API access requires a valid `auth` JWT with PMU-level role.
+
+## Response envelope
+
+Unlike the Bilateral and Platform Report surfaces (which return raw data), Type-One Report endpoints use `@UseInterceptors(ResponseInterceptor)`. All responses are wrapped in the PRMS standard envelope:
+
+<ResponseField name="response" type="any">
+  The actual payload — fact sheet data, key result story content, or impact area breakdown.
+</ResponseField>
+
+<ResponseField name="statusCode" type="number">
+  HTTP status code of the operation.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable status message.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO 8601 timestamp of the response.
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  The request path that produced this response.
+</ResponseField>
+
+## Error handling
+
+Errors follow the PRMS `HttpExceptionFilter` format — same envelope shape with a non-2xx `statusCode`. Common error scenarios:
+
+| Status | Cause |
+|---|---|
+| `401` | Missing or expired `auth` JWT. |
+| `403` | Valid JWT but insufficient role (PMU-level access required). |
+| `404` | Initiative id or phase not found. |
+| `500` | Report generation failure — check phase id validity and initiative data completeness. |
+
+<Tip>
+  If you receive a `401` with `shouldRefreshToken: true` in the response body, the session has expired. Re-authenticate to obtain a new token. If you receive `shouldRedirectToLogin: true`, the token is invalid or malformed.
+</Tip>

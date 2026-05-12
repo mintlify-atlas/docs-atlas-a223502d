@@ -1,81 +1,107 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
-icon: 'rocket'
+title: "Get started: create and submit your first result"
+description: "Log in to PRMS, navigate to the results list, create a typed result, fill all required fields, and submit it through the QA workflow in a few steps."
+keywords: ["PRMS", "quickstart", "create result", "submit result", "QA workflow", "getting started"]
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide walks you through the end-to-end journey of creating a result in PRMS and submitting it for quality assurance review. It covers the steps a result submitter (Initiative or Center staff) follows during an open reporting phase. By the end you will have a result in **Quality Assessed** status, ready for a reviewer to assess.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Your PRMS account is provisioned through your organization's Active Directory and AWS Cognito. If you cannot log in, contact your platform admin — PRMS does not manage identity provisioning directly.
 </Note>
+
+## Create and submit a result
+
+<Steps>
+  <Step title="Log in">
+    Open the PRMS web application in your browser. You will be redirected to the Cognito-backed login page. Enter your organizational credentials and complete any multi-factor authentication required by your organization.
+
+    After authentication, PRMS redirects you to the **Home** dashboard for the current reporting phase. The dashboard shows submission progress across initiatives and surfaces results that need your attention.
+  </Step>
+
+  <Step title="Navigate to the results list">
+    In the left navigation, select **Results**. The results list shows all results you have access to for the current reporting phase — results belonging to your initiative, results shared with you, and any you have created.
+
+    Use the filters at the top of the list to narrow by result type, status, or initiative. The status column shows where each result sits in the workflow: **Editing**, **Quality Assessed**, or **Submitted**.
+  </Step>
+
+  <Step title="Create a new result">
+    Click **Create result** in the top-right area of the results list. A creation dialog appears asking for two required choices:
+
+    - **Result type** — select from the 11 canonical types (e.g., Knowledge product, Capacity sharing for development, Innovation development, Policy change). The type you select determines which type-specific section appears on the result detail form.
+    - **Reporting phase** — confirm the active phase. Normally this is pre-selected to the current open phase.
+
+    After confirming, PRMS creates the result with `status = Editing` and opens the result detail form.
+  </Step>
+
+  <Step title="Fill the common fields">
+    The top section of the result detail form captures fields shared by all result types. These are required before you can submit for QA.
+
+    <AccordionGroup>
+      <Accordion title="Title and description">
+        Enter a clear, specific title for your result. The title should describe what the result is, not the activity that produced it. A concise description helps QA reviewers and bilateral consumers understand the result at a glance.
+      </Accordion>
+      <Accordion title="Theory of Change alignment">
+        Link your result to one or more Theory of Change outcomes. Click **Add ToC alignment** to search outcomes from the ToC service connected to your initiative. At least one alignment row is required before submission for most result types.
+      </Accordion>
+      <Accordion title="Geography">
+        Specify where the result occurred. You can select countries, regions, or sub-national areas. Results with global or cross-regional scope can be marked accordingly.
+      </Accordion>
+      <Accordion title="Contributing centers and partners">
+        Add at least one contributing center and mark one as the **lead center**. You can also add partner institutions from the CLARISA catalog. At least one lead center is required for submission.
+      </Accordion>
+      <Accordion title="Evidence">
+        Attach one or more evidence rows. Each row includes an evidence type, a link or reference, and an optional description. Evidence can point to documents in SharePoint, CGSpace handles (for knowledge products), or external URLs. Required evidence varies by result type.
+      </Accordion>
+      <Accordion title="DAC scores and impact-area scoring">
+        Cross-cutting scores (gender, nutrition, climate, environment) and impact-area indicators appear in the scoring section. Fill these in accordance with your initiative's reporting guidance.
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+
+  <Step title="Fill the type-specific section">
+    Below the common fields, the form shows a section specific to your result type. Examples:
+
+    - **Knowledge product** — enter the CGSpace handle, journal or publication details, and FAIR baseline indicators. PRMS calls the MQAP service to pre-fill some attributes automatically.
+    - **Capacity sharing for development** — select delivery method (e.g., long-term training, workshop), term length, number of participants, and whether the capacity building was delivered on behalf of another institution.
+    - **Innovation development** — describe the innovation, its readiness level, and link it to any related innovation use results or scaling studies.
+    - **Policy change** — select the policy type and stage from the CLARISA-backed catalogs, then answer the structured "Is this result related to" questions.
+    - **IPSR (innovation package)** — map the result to pathway steps and link complementary innovations.
+
+    Save your work frequently using the **Save** button. PRMS also autosaves while you type, but an explicit save confirms your changes are persisted.
+  </Step>
+
+  <Step title="Request QA review">
+    When all required fields are complete and the form shows no validation errors, click **Submit for QA**. PRMS runs server-side validation before accepting the request:
+
+    - At least one ToC alignment row (where required by type).
+    - At least one evidence row (where required by type).
+    - At least one contributing center marked as lead.
+    - All type-specific required fields populated.
+
+    If validation passes, the result status changes to **Quality Assessed** and the QA reviewer is notified via in-app notification and email, depending on their notification settings.
+  </Step>
+</Steps>
+
+## What happens after you submit
+
+Once the result is in **Quality Assessed** status, a QA reviewer opens it in the review drawer and assesses the fields, evidence, and ToC alignment. Two outcomes are possible:
+
+- **Advanced to Submitted** — the reviewer confirms the result meets quality criteria. The result moves to status 3 (Submitted) and is locked for the reporting cycle.
+- **Returned to Editing** — the reviewer adds structured comments tied to specific fields and sends the result back.
+
+<Tip>
+  When your result is returned, open the **Review history** tab on the result detail page to see every reviewer comment organized by field. Address each comment, update the relevant fields, and click **Submit for QA** again. Multiple review rounds are normal — the history gives you a clear record of what changed.
+</Tip>
+
+## Sharing a result with collaborators
+
+If another Initiative or Center team contributed to the result and needs editing access, use the **Share / request access** function on the result detail page. The receiving team member gets a notification and, once they accept, can view and edit the result alongside you.
+
+## Authentication note
+
+<Info>
+  The PRMS Angular client automatically attaches a custom `auth: <JWT>` header on every API request via its HTTP interceptor. You do not need to manage tokens manually. If your session expires, the app will prompt you to log in again.
+
+  The header name is `auth`, not the standard `Authorization: Bearer` format. This is intentional by design and applies to all authenticated PRMS endpoints. The `/api/bilateral/*` and `/api/platform-report/*` endpoints are the only routes that do not require this header — they are protected at the network perimeter instead.
+</Info>

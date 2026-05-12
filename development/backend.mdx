@@ -1,0 +1,279 @@
+---
+title: 'Backend development guide for PRMS (NestJS)'
+description: 'Develop the NestJS 11 + TypeORM + MySQL backend: module structure, routing, migrations, response patterns, and Lambda or Docker deployment.'
+keywords: ['NestJS', 'TypeORM', 'MySQL', 'backend', 'API', 'migrations', 'Lambda', 'Docker']
+---
+
+The PRMS backend is a NestJS 11 application backed by TypeORM and MySQL 8. It runs as an AWS Lambda function in production (via Serverless Framework) or as a Docker container, and locally with `npm run start:dev`. This guide covers the module layout, routing, migration workflow, response conventions, and deployment options.
+
+## Technology stack
+
+| Component | Technology |
+|---|---|
+| Framework | NestJS 11 |
+| ORM | TypeORM 0.3 |
+| Database | MySQL 8 |
+| Runtime | Node.js 20 |
+| Deployment | AWS Lambda (Serverless Framework) or Docker (multi-stage build) |
+| Auth | Custom `auth: <JWT>` header, AWS Cognito + Active Directory (LDAP) |
+| Message queue | RabbitMQ (`reporting-metadata-export-queue`) |
+| Real-time | Pusher SDK + WebSockets |
+
+## Module structure
+
+Every feature domain lives under `onecgiar-pr-server/src/api/<feature>/` and follows the standard NestJS module layout:
+
+```
+api/<feature>/
+├── <feature>.module.ts         # @Module: imports, controllers, providers
+├── <feature>.controller.ts     # Routes + Swagger decorators
+├── <feature>.service.ts        # Business logic and orchestration
+├── <feature>.repository.ts     # TypeORM repository (custom queries)
+├── <feature>.routes.ts         # Optional: nested route definitions
+├── dto/                        # Input DTOs (class-validator)
+├── entities/                   # TypeORM entities
+└── *.spec.ts                   # Co-located Jest tests
+```
+
+Heavy or complex modules (such as `api/results/` and `api/ipsr/`) nest dozens of related sub-modules using this same shape.
+
+## API surface
+
+Routes are mounted in `src/main.routes.ts` and `src/api/modules.routes.ts`. The top-level mounts are:
+
+| Path prefix | Purpose |
+|---|---|
+| `/api/*` | Main application traffic (results, IPSR, QA, notifications, admin, etc.) |
+| `/auth/*` | JWT issue and verify, AD/Cognito flows, roles |
+| `/clarisa/*` | CLARISA catalog cache and scheduled sync |
+| `/toc/*` | Theory of Change trees and result→ToC mappings |
+| `/type-one-report` | PMU consolidated report |
+| `/contribution-to-indicators/*` | Indicator-level contributions (top-level, not under `/api/`) |
+| `/logs/*` | DynamoDB operational logs |
+
+Two surfaces are intentionally **excluded from JWT enforcement**:
+
+- `/api/bilateral/*` — headless typed payload surface, also throttler-excluded
+- `/api/platform-report/*` — headless payload surface for platform reports
+
+These endpoints are protected at the API Gateway or perimeter level, not inside NestJS.
+
+## Build and start commands
+
+Run all commands from the `onecgiar-pr-server/` directory.
+
+<CodeGroup>
+```bash npm
+# Compile TypeScript to dist/
+npm run build
+
+# Start compiled output (production)
+npm run start:prod
+
+# Start with auto-reload (development)
+npm run start:dev
+
+# Start without watch (staging / smoke test)
+npm run start
+```
+
+```bash docker
+# Build the multi-stage image
+docker build -t prms-server .
+
+# Run with env file, exposing port 3000
+docker run --env-file .env -p 3000:3000 prms-server
+```
+</CodeGroup>
+
+## Migration workflow
+
+Schema changes are made exclusively through TypeORM migrations. `synchronize: false` and `migrationsRun: false` are both set in `src/config/orm.config.ts` — the ORM never auto-syncs.
+
+<Steps>
+  <Step title="Generate a migration from entity changes">
+    ```bash
+    npm run migration:generate -- ./src/migrations/AddMyNewColumn
+    ```
+
+    TypeORM diffs the current entities against the applied migrations and writes a timestamped file under `src/migrations/`.
+  </Step>
+
+  <Step title="Review the generated migration">
+    Open the new file and confirm both the `up` and `down` methods are correct. Every migration must have a working `down`. Do not edit a migration after it has been applied to `master`.
+  </Step>
+
+  <Step title="Apply pending migrations">
+    ```bash
+    npm run migration:run
+    ```
+  </Step>
+
+  <Step title="Check for drift before merging">
+    ```bash
+    # Local guard
+    npm run migration:check
+
+    # CI-friendly version (blocks merges with pending migrations)
+    npm run migration:check:ci
+    ```
+  </Step>
+
+  <Step title="Roll back the last migration if needed">
+    ```bash
+    npm run migration:revert
+    ```
+  </Step>
+</Steps>
+
+<Note>
+Migration files live in `src/migrations/` and are excluded from test coverage and test discovery. Never squash old migrations.
+</Note>
+
+## Adding a new feature module
+
+<Steps>
+  <Step title="Create the module folder">
+    Create `src/api/<feature>/` with the standard layout: `module.ts`, `controller.ts`, `service.ts`, `repository.ts`, `dto/`, and `entities/`.
+  </Step>
+
+  <Step title="Register in app.module.ts">
+    Add the new module to the `imports` array in `src/app.module.ts`:
+
+    ```typescript
+    @Module({
+      imports: [
+        // ... existing modules
+        MyFeatureModule,
+      ],
+    })
+    export class AppModule implements NestModule { ... }
+    ```
+  </Step>
+
+  <Step title="Add to modules.routes.ts">
+    Mount the module under its URL path in `src/api/modules.routes.ts`:
+
+    ```typescript
+    export const ModulesRoutes: Routes = [
+      // ... existing routes
+      {
+        path: 'my-feature',
+        module: MyFeatureModule,
+      },
+    ];
+    ```
+  </Step>
+
+  <Step title="Implement controller, service, repository, entities, and DTOs">
+    Follow the conventions below. Validate all input DTOs with `class-validator`. Decorate every endpoint with `@ApiTags` and `@ApiOperation` for Swagger.
+  </Step>
+
+  <Step title="Generate and run a migration">
+    If you added new entities or changed columns:
+
+    ```bash
+    npm run migration:generate -- ./src/migrations/CreateMyFeatureTables
+    npm run migration:run
+    ```
+  </Step>
+
+  <Step title="Write co-located tests">
+    Add `*.spec.ts` files next to every new source file. Run `npm run test:cov` to confirm coverage does not drop below the thresholds.
+  </Step>
+</Steps>
+
+## Response patterns
+
+### Standard envelope
+
+Apply `@UseInterceptors(ResponseInterceptor)` on controllers whose endpoints return plain objects. The interceptor wraps the response in the standard envelope:
+
+```json
+{
+  "response": { ... },
+  "statusCode": 200,
+  "message": "...",
+  "timestamp": "...",
+  "path": "..."
+}
+```
+
+```typescript
+@UseInterceptors(ResponseInterceptor)
+@Get(':id')
+findOne(@Param('id', ParseIntPipe) id: number) {
+  return this.myFeatureService.findOne(id);
+}
+```
+
+### Raw arrays (bilateral and platform-report)
+
+Endpoints under `/api/bilateral/*` and `/api/platform-report/*` return plain arrays or typed objects without the standard envelope. The `ResponseInterceptor` passes arrays through unchanged. These payload shapes are under contract in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md` and must not change without updating that document's change log.
+
+### Error responses
+
+`HttpExceptionFilter` catches all `HttpException` instances and returns:
+
+```json
+{
+  "statusCode": 404,
+  "message": "Result not found",
+  "timestamp": "...",
+  "path": "/api/results/9999"
+}
+```
+
+Throw `HttpException` (or NestJS built-in variants) from services. Never let error stacks reach the client body.
+
+## Key shared utilities
+
+| Utility / class | Location | Use |
+|---|---|---|
+| `BaseServiceSimple` | `src/shared/entities/base-service.ts` | Upsert and soft-delete logic for join tables. Extend instead of re-implementing. |
+| `BaseDeleteService` | `src/shared/entities/base-service.ts` | Soft-delete (`is_active = false`) with audit column writes. |
+| `BaseEntity` | `src/shared/entities/base-entity.ts` | Default base for entities: `is_active`, `created_date`, `last_updated_date`, `created_by`, `last_updated_by`. |
+| `returnFormatService` | `src/shared/extendsGlobalDTO/returnServices.dto.ts` | Canonical service return shape `{ response, message, status }` consumed by `ResponseInterceptor`. |
+| `@UserToken()` | `src/shared/decorators/user-token.decorator.ts` | Decode the JWT payload from the `auth` header into a `TokenDto`. |
+| `@Roles` + `ValidRoleGuard` | `src/shared/decorators/`, `src/shared/guards/` | Role-gated endpoints. |
+
+## Auth header
+
+PRMS uses a **custom `auth: <JWT>` header**, not `Authorization: Bearer`. The `JwtMiddleware` in `src/auth/Middlewares/jwt.middleware.ts` verifies it, re-signs a fresh token, and returns it on the response so the Angular interceptor can update local storage for rolling sessions.
+
+```typescript
+// Correct
+curl -H "auth: <TOKEN>" http://localhost:3000/api/results/get/all
+
+// Wrong — the middleware rejects this
+curl -H "Authorization: Bearer <TOKEN>" http://localhost:3000/api/results/get/all
+```
+
+## Deployment
+
+<Tabs>
+  <Tab title="Lambda">
+    The `serverless.yaml` at the root of `onecgiar-pr-server/` deploys a single Lambda function with `dist/lambda.handler` as the entry point.
+
+    ```bash
+    # Test locally with Serverless Offline
+    npm run lambda:test
+
+    # Deploy to AWS
+    npm run lambda:deploy
+    ```
+
+    <Note>
+    Watch bundle size. The `serverless-plugin-optimize` and `serverless-plugin-typescript` plugins are active. Avoid pulling in new heavy dependencies without measuring the cold-start impact.
+    </Note>
+  </Tab>
+
+  <Tab title="Docker">
+    The `Dockerfile` is a multi-stage build: `base → development | production`. The production stage compiles TypeScript and runs `dist/main.js` with Node 20 Alpine.
+
+    ```bash
+    docker build -t prms-server .
+    docker run --env-file .env -p 3000:3000 prms-server
+    ```
+  </Tab>
+</Tabs>

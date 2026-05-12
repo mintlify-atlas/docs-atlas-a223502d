@@ -1,0 +1,395 @@
+---
+title: "Bilateral API — typed result payload surface"
+description: "JWT-excluded, throttle-exempt endpoints that serve typed CGIAR result summaries to bilateral funders, discovery tools, and BI dashboards."
+---
+
+The Bilateral API (`/api/bilateral/*`) is the authoritative typed payload surface for downstream consumers of CGIAR results. It is designed for bilateral funders, discovery portals, and BI dashboards that need stable, readable result data without going through the authenticated PRMS UI. The payload contract is maintained in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md`; all shape changes must update that file's change log.
+
+<Note>
+  `/api/bilateral/*` endpoints do **not** require a JWT. Authentication is enforced at the infrastructure perimeter (API Gateway / IP allowlist), not inside NestJS. Do not send an `auth` header — it is not read on this surface.
+</Note>
+
+<Note>
+  Bilateral endpoints are also **exempt from rate throttling**. The global 100 req / 60 s throttle does not apply. Volume controls belong at the API Gateway / network layer.
+</Note>
+
+## Endpoints
+
+All bilateral routes are mounted under `/api/bilateral/`.
+
+### List all results (paginated)
+
+```
+GET /api/bilateral/list
+```
+
+Returns a paginated, filterable list of active results. Each item carries the `type` discriminator, `result_id`, and a fully enriched `data` object that includes common core fields plus the type-specific summary for the result's indicator family.
+
+**Query parameters**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | Page number (1-based). |
+| `limit` | integer | `10` | Items per page. Maximum: `500`. |
+| `source` | enum | — | `Result` (W1/W2 funded) or `API` (W3/Bilateral funded). |
+| `portfolio` | string | — | Portfolio acronym, e.g. `P22`, `P25`. |
+| `phase_year` | integer | — | Reporting year, e.g. `2025`. |
+| `result_type` | enum | — | Result type name: `Knowledge product`, `Innovation use`, `Innovation development`, `Capacity sharing for development`, `Policy change`, `Innovation Package`, `Other outcome`, `Other output`, `Impact contribution`. |
+| `status_id` | integer | — | Workflow status id (1–7). |
+| `status` | enum | — | `Editing`, `Quality Assessed`, `Submitted`, `Discontinued`, `Pending Review`, `Approved`, `Rejected`. |
+| `last_updated_from` | ISO 8601 date | — | Filter by last-updated date range start. |
+| `last_updated_to` | ISO 8601 date | — | Filter by last-updated date range end. |
+| `created_from` | ISO 8601 date | — | Filter by created date range start. |
+| `created_to` | ISO 8601 date | — | Filter by created date range end. |
+| `center` | string | — | Leading center code or acronym, e.g. `IRRI`. |
+| `initiative_lead_code` | string | — | Initiative `official_code`; returns results where this initiative is the lead (role 1). |
+| `search` | string | — | Full-text search on result title. |
+
+### Get a single result
+
+```
+GET /api/bilateral/:id
+```
+
+Returns one result by its numeric `result_id`. Response shape is identical to a single list entry.
+
+### Get all results (sync)
+
+```
+GET /api/bilateral/results
+```
+
+Retrieves all active results for external synchronization. Supports optional query parameters `bilateral` (boolean — restrict to results with linked bilateral projects) and `type` (result type discriminator string, e.g. `knowledge_product`).
+
+### Get all results (unfiltered)
+
+```
+GET /api/bilateral
+```
+
+Returns up to `limit` results (default `10`) with no pagination controls. Intended for quick sampling; use `/api/bilateral/list` for production consumers.
+
+## Response shape
+
+The response is a **raw array** — it is not wrapped in the PRMS response envelope. Each element has the following top-level structure:
+
+<ResponseField name="type" type="string" required>
+  Result type discriminator. One of: `knowledge_product`, `capacity_sharing`, `innovation_development`, `innovation_use`, `innovation_package`, `policy_change`. Other types (e.g. other output, other outcome) may appear without a dedicated type-specific summary.
+</ResponseField>
+
+<ResponseField name="result_id" type="number" required>
+  Numeric primary key of the result row in PRMS.
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Fully enriched result document. Contains common core fields (listed below) plus the type-specific `*_summary` object for the result's indicator family.
+</ResponseField>
+
+### Common fields on `data`
+
+These fields are present for all or most result types.
+
+**Identity and lifecycle**
+
+<ResponseField name="data.result_code" type="number">
+  Stable public-facing numeric code. Used in `pdf_link` and `prms_link` URLs.
+</ResponseField>
+
+<ResponseField name="data.result_title" type="string">
+  Headline title of the result (bilateral-friendly name).
+</ResponseField>
+
+<ResponseField name="data.description" type="string">
+  Long-form description of what was achieved and how.
+</ResponseField>
+
+<ResponseField name="data.year" type="number">
+  Reporting year context — which reporting cycle this result belongs to.
+</ResponseField>
+
+<ResponseField name="data.is_active" type="boolean">
+  Soft-delete / validity flag. `true` means the record is current.
+</ResponseField>
+
+<ResponseField name="data.status_id" type="number">
+  Numeric workflow status id. See `obj_status` for the human-readable form.
+</ResponseField>
+
+<ResponseField name="data.obj_status" type="object">
+  `{ result_status_id, status_name, status_description }` — human-readable submission state, e.g. `"Submitted"`.
+</ResponseField>
+
+<ResponseField name="data.pdf_link" type="string">
+  URL to the PRMS PDF/report view for this result code.
+</ResponseField>
+
+<ResponseField name="data.prms_link" type="string">
+  Deep link into the PRMS web UI full result editor.
+</ResponseField>
+
+<ResponseField name="data.created_date" type="string">
+  ISO 8601 timestamp — when this record first entered PRMS.
+</ResponseField>
+
+<ResponseField name="data.last_updated_date" type="string">
+  ISO 8601 timestamp — last change to the result.
+</ResponseField>
+
+**Indicator family and level**
+
+<ResponseField name="data.result_level" type="object">
+  `{ code, name, description }` — where in the results chain this sits (output, outcome, etc.).
+</ResponseField>
+
+<ResponseField name="data.indicator_category" type="object">
+  `{ code, name }` — indicator family for display (e.g. `"Innovation use"`).
+</ResponseField>
+
+**Theory of Change and primary initiative**
+
+<ResponseField name="data.toc_alignment" type="array">
+  Per contributing initiative: `entity` (official_code, name), `initiative_role`, `toc_results[]` with level, `sub_entity`, and `result_name`.
+</ResponseField>
+
+<ResponseField name="data.primary_entity" type="object">
+  `{ official_code, name }` — the main initiative that owns or leads this result.
+</ResponseField>
+
+**Geography**
+
+<ResponseField name="data.geographic_focus" type="object">
+  `{ code, name, description }` — geographic scope type (national, regional, multi-national, etc.).
+</ResponseField>
+
+<ResponseField name="data.regions" type="array">
+  Region objects when the result applies to one or more broader geographic areas.
+</ResponseField>
+
+<ResponseField name="data.countries" type="array">
+  `[{ code, name }]` — ISO-style country entries.
+</ResponseField>
+
+**Centers and partners**
+
+<ResponseField name="data.contributing_centers" type="array">
+  `[{ code, name, acronym, is_lead }]` — CGIAR centers involved; `is_lead` marks the lead center.
+</ResponseField>
+
+<ResponseField name="data.leading_result" type="object">
+  `{ lead_kind, id, code, name, acronym }` — the lead entity. `lead_kind` is `"center"` or `"partner"`. Identifiers use CLARISA ids, not internal PRMS join PKs.
+</ResponseField>
+
+<ResponseField name="data.contributing_partners" type="array">
+  Non-CGIAR or additional partners when captured.
+</ResponseField>
+
+<ResponseField name="data.bilateral_projects" type="array">
+  Bilateral grant / project summaries tied to this result.
+</ResponseField>
+
+**DAC cross-cutting scores**
+
+<ResponseField name="data.dac_scores" type="object">
+  Object with keys `gender`, `climate_change`, `nutrition`, `environmental_biodiversity`, `poverty`. Each: `tag_title` (significance level text) and `impact_area_names[]` when applicable.
+</ResponseField>
+
+**Evidence and submission**
+
+<ResponseField name="data.evidences" type="array">
+  `[{ link, description }]` — proof or references attached to the result.
+</ResponseField>
+
+<ResponseField name="data.last_submission" type="object">
+  Present when `status_id` is `2` (Quality Assessed) or `3` (Submitted): `{ id, created_date, comment, status, status_id, submitted_by: { user_id, first_name, last_name } }`.
+</ResponseField>
+
+<ResponseField name="data.source" type="string">
+  Source enum string, e.g. `"Result"`.
+</ResponseField>
+
+<ResponseField name="data.source_definition" type="string">
+  Funding / reporting stream label, e.g. `"W1/W2"`.
+</ResponseField>
+
+<ResponseField name="data.created_by" type="object">
+  `{ first_name, last_name, email }` — who created or owns the record in PRMS.
+</ResponseField>
+
+## Type-specific summaries
+
+Each result type appends a summary object to `data` when `type` matches. Summaries use **CLARISA ids** for all referenced entities — never internal PRMS join PKs.
+
+### `knowledge_product` → `data.knowledge_product_summary`
+
+<ResponseField name="data.knowledge_product_summary.handle" type="string">
+  Stable CGSpace / product handle — the only field in this summary. The full `result_knowledge_product_array` tree is removed during bilateral enrichment and replaced by this slim object.
+</ResponseField>
+
+### `innovation_development` → `data.innovation_development_summary`
+
+Covers the innovation profile (typology, readiness level, developers), anticipated user demand, budget lines, and a questionnaire block.
+
+Key fields:
+
+<ResponseField name="data.innovation_development_summary.short_name" type="string">
+  Short title of the innovation.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.typology" type="object">
+  `{ id, code, name, definition }` — CLARISA innovation type.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.innovation_readiness_level" type="object">
+  `{ id, level, name, definition }` — TRL-style readiness scale.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.anticipated_user_demand" type="object">
+  Structured demand without internal ids: `actors[]`, `organizations[]`, `measures[]`.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.initiative_budget" type="array">
+  Budget rows: `{ current_year, next_year, kind_cash, is_determined, initiative: { id, official_code, name } }`. `initiative.id` is the CLARISA initiative id.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.bilateral_project_budget" type="array">
+  Budget rows: `{ in_cash, in_kind, kind_cash, is_determined, project: { id, short_name, full_name } }`. `project.id` is the CLARISA project id.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.partner_budget" type="array">
+  Budget rows: `{ kind_cash, in_cash, in_kind, is_determined, institutions_id, institution: { id, name, acronym, institution_type_name } }`. `institution.id` is the CLARISA institution id.
+</ResponseField>
+
+<ResponseField name="data.innovation_development_summary.innovation_development_questionnaire" type="object">
+  Four arrays of `{ question, question_id, answer, selected_sub_options? }`: `responsible_innovation_and_scaling`, `intellectual_property_rights`, `innovation_team_diversity`, `megatrends`. Megatrends uses `answer.selections[]` (one entry per checked option). Portfolio P25 uses the V2 question catalog.
+</ResponseField>
+
+### `innovation_use` → `data.innovation_use_summary`
+
+Current and 2030 use sections, innovation use level from CLARISA, links to other results, and budget lines (no reference materials or user-need evidence links — those are innovation development only).
+
+<ResponseField name="data.innovation_use_summary.innovation_use_level" type="object">
+  `{ id, level, name, definition }` — evidence-based use level from CLARISA.
+</ResponseField>
+
+<ResponseField name="data.innovation_use_summary.current_section" type="object">
+  Populated when `innov_use_to_be_determined` is `false`: `actors[]`, `organizations[]`, `other_quantitative[]` for the reporting year.
+</ResponseField>
+
+<ResponseField name="data.innovation_use_summary.innovation_use_2030_section" type="object">
+  Populated when `innov_use_2030_to_be_determined` is `false`: same shape as `current_section` for 2030 projections.
+</ResponseField>
+
+### `capacity_sharing` → `data.capacity_development_summary`
+
+<ResponseField name="data.capacity_development_summary.male_using" type="number">
+  Male participant count (or `null`).
+</ResponseField>
+
+<ResponseField name="data.capacity_development_summary.female_using" type="number">
+  Female participant count (or `null`).
+</ResponseField>
+
+<ResponseField name="data.capacity_development_summary.delivery_method" type="object">
+  `{ name, description }` — resolved from the cap dev delivery methods catalog. No raw FK.
+</ResponseField>
+
+<ResponseField name="data.capacity_development_summary.training_length" type="object">
+  `{ name, term, description }` — from the cap dev term catalog (length of training).
+</ResponseField>
+
+<ResponseField name="data.capacity_development_summary.on_behalf_organizations" type="array">
+  `[{ id, name, acronym, institution_type_name }]` — implementing org rows. `id` is the CLARISA institution id.
+</ResponseField>
+
+### `policy_change` → `data.policy_change_summary`
+
+<ResponseField name="data.policy_change_summary.policy_type" type="object">
+  `{ id, name, definition }` — CLARISA policy type.
+</ResponseField>
+
+<ResponseField name="data.policy_change_summary.policy_stage" type="object">
+  `{ id, name, definition }` — CLARISA policy stage.
+</ResponseField>
+
+<ResponseField name="data.policy_change_summary.amount" type="number">
+  Policy-related USD amount when applicable, or `null`.
+</ResponseField>
+
+<ResponseField name="data.policy_change_summary.amount_status_label" type="string">
+  `"Confirmed"`, `"Estimated"`, or `"Unknown"`.
+</ResponseField>
+
+<ResponseField name="data.policy_change_summary.result_related_to" type="array">
+  `[{ parent_question, option_text }]` — options ticked under "Is this result related to". Empty array when none.
+</ResponseField>
+
+<ResponseField name="data.policy_change_summary.policy_implementing_organizations" type="array">
+  `[{ id, name, acronym, institution_type_name }]` — implementing orgs (PRMS role 4). `id` is the CLARISA institution id.
+</ResponseField>
+
+### `innovation_package` → `data.ipsr_pathway_summary`
+
+The four IPSR pathway steps in one object. Any step may be `null` if its data could not be loaded.
+
+<ResponseField name="data.ipsr_pathway_summary.step_one" type="object">
+  Core innovation row, `specify_aspired_outcomes_impact`, `target_innovation_use` (actors, organizations, other quantitative), `scalig_ambition` (note: spelled this way in the payload), and expert workshop participants.
+</ResponseField>
+
+<ResponseField name="data.ipsr_pathway_summary.step_two" type="array">
+  Complementary innovation rows. Each item carries `official_code` (CLARISA initiative code) and `result_type_name` (human-readable) in place of the internal `initiative_id` and `result_type_id`.
+</ResponseField>
+
+<ResponseField name="data.ipsr_pathway_summary.step_three" type="object">
+  Scaling readiness assessment: `result_core_innovation`, `result_innovation_package` (flags only), optional `expert_workshop` (assessed during, assessment mode, and conditional `workshop_level_assignments`), `evidence_based_assessment` with readiness/use levels per innovation, and `target_innovation_use`.
+</ResponseField>
+
+<ResponseField name="data.ipsr_pathway_summary.step_four" type="object">
+  Slim investments slice: `initiative_budget`, `bilateral_project_budget`, `partner_budget` (same row shape as innovation development / innovation use), `ipsr_materials`, `has_scaling_studies`, `scaling_studies_urls`. Internal audit columns, pictures, and publish flags are omitted.
+</ResponseField>
+
+## Payload conventions
+
+- **Discriminator:** always read `type` to determine which `*_summary` key is present on `data`.
+- **Identifiers:** all cross-entity references use **CLARISA ids** (`initiative.id`, `institution.id`, `project.id`), never internal PRMS join PKs.
+- **Field names:** `camelCase` on `data` and all nested objects.
+- **Array pass-through:** the response is a raw array — there is no PRMS envelope (`response`, `statusCode`, `message` wrapper).
+- **Additive changes:** new fields are added without versioning. Breaking changes (field removals, renames, type changes) require a `v2` rollout.
+- **Null vs absent:** missing optional objects are `null`; missing optional arrays are `[]`.
+
+## Reference JSON fragment
+
+The following illustrates a representative `data` object (values are examples only):
+
+```json
+{
+  "result_code": 28738,
+  "result_title": "Adoption of improved rice varieties in Bangladesh",
+  "year": 2025,
+  "status_id": 3,
+  "obj_status": { "result_status_id": "3", "status_name": "Submitted", "status_description": null },
+  "pdf_link": "https://reporting.cgiar.org/reports/result-details/28738?phase=6",
+  "prms_link": "https://reporting.cgiar.org/result/result-detail/28738/general-information?phase=6",
+  "is_active": true,
+  "result_level": { "code": 3, "name": "Outcome", "description": "…" },
+  "indicator_category": { "code": 2, "name": "Innovation use" },
+  "primary_entity": { "official_code": "SP09", "name": "Scaling for Impact" },
+  "geographic_focus": { "code": 3, "name": "Multi-national", "description": "…" },
+  "countries": [{ "code": "BD", "name": "Bangladesh" }],
+  "contributing_centers": [{ "code": "CENTER-15", "name": "WorldFish", "acronym": "WorldFish", "is_lead": true }],
+  "leading_result": { "lead_kind": "center", "id": 12345, "code": "CENTER-15", "name": "WorldFish", "acronym": "WorldFish" },
+  "dac_scores": {
+    "gender": { "tag_title": "(1) Significant", "impact_area_names": [] },
+    "nutrition": { "tag_title": "(2) Principal", "impact_area_names": ["Food Security"] }
+  },
+  "source": "Result",
+  "source_definition": "W1/W2"
+}
+```
+
+## Change log
+
+All payload changes are tracked in `onecgiar-pr-server/docs/bilateral-result-summaries.en.md`. Consult that file as the authoritative contract before building a consumer integration. The source implementation is `bilateral.service.ts` (`enrichBilateralResultResponse` and related builders).
+
+<Tip>
+  Bilateral endpoints are ideal for discovery tools, bilateral funder portals, and BI dashboards. They require no API key from PRMS itself — configure access controls at your API Gateway or network layer.
+</Tip>

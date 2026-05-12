@@ -1,0 +1,198 @@
+---
+title: 'Notifications and user preferences API in PRMS'
+description: 'Retrieve and manage in-app notifications, mark items as read, and configure per-initiative email notification preferences for PRMS users.'
+keywords: ['notifications', 'in-app', 'email', 'user preferences', 'Pusher', 'WebSocket', 'PRMS']
+---
+
+PRMS delivers notifications through two complementary surfaces: in-app notifications accessible via the REST API, and real-time push events delivered over WebSockets using Pusher. Both surfaces are scoped to the authenticated user — every call is resolved from the JWT in the `auth` header.
+
+All endpoints require a valid JWT. There is no public or anonymous access. Unauthorized or missing tokens return `401`. The `auth` header carries the raw JWT (not a `Bearer` prefix — see the [authentication overview](/api/admin)).
+
+---
+
+## Notification types
+
+Notifications are classified by level and type. The level controls scope; the type identifies the triggering event:
+
+| `NotificationLevelEnum` | Scope |
+|---|---|
+| `Application` | System-wide announcements, not tied to a specific result. |
+| `Result` | Events scoped to a specific result (status changes, QA decisions). |
+
+| `NotificationTypeEnum` | Trigger |
+|---|---|
+| `Result Created` | A new result was created in an initiative the user belongs to. |
+| `Result Submitted` | A result was submitted for QA review. |
+| `Result Unsubmitted` | A previously submitted result was pulled back to Editing. |
+| `Result QAed` | QA assessment was completed on a result. |
+| `Announcement` | A system-wide announcement was broadcast by an admin. |
+
+Each notification record carries: `notification_id`, `notification_level`, `notification_type`, `target_user`, `emitter_user`, `result_id` (nullable for application-level), `text`, `read` (boolean), `created_date`, and `read_date`.
+
+---
+
+## In-app notifications
+
+### Retrieve all notifications
+
+```
+GET /api/notification/updates
+```
+
+Returns all in-app notifications for the authenticated user, ordered by recency. Use this endpoint to populate the full notification list view.
+
+**Auth:** JWT required (`auth` header).
+
+**Response:** array of notification objects.
+
+---
+
+### Retrieve pop-up notifications
+
+```
+GET /api/notification/updates-pop-up
+```
+
+Returns the subset of notifications suitable for display in the notification pop-up panel (typically unread items). The service applies its own filtering — callers do not need to pass any parameters.
+
+**Auth:** JWT required.
+
+---
+
+### Recent result activity
+
+```
+GET /api/notification/recent-activity
+```
+
+Returns up to the last `limit` result-related notifications for the authenticated user. Defaults to 10 if the parameter is absent or invalid.
+
+<ParamField query="limit" type="number">
+  Maximum number of activity items to return. Must be a positive integer. Defaults to `10`.
+</ParamField>
+
+**Auth:** JWT required.
+
+---
+
+### Mark a notification as read
+
+```
+PATCH /api/notification/read/:notificationId
+```
+
+Sets the `read` flag to `true` and records the `read_date` timestamp on a single notification.
+
+<ParamField path="notificationId" type="number" required>
+  ID of the notification to mark as read.
+</ParamField>
+
+**Auth:** JWT required. Only the target user of the notification can mark it read — the service enforces user ownership.
+
+---
+
+### Mark all notifications as read
+
+```
+PATCH /api/notification/read-all
+```
+
+Marks every unread notification for the authenticated user as read in a single operation.
+
+**Auth:** JWT required.
+
+---
+
+### Create an announcement (admin)
+
+```
+POST /api/notification/new-anouncement
+```
+
+Broadcasts a system-wide application-level announcement to all users. The notification is emitted both as a REST-persisted record and as a real-time Pusher event.
+
+**Auth:** JWT required. This endpoint is intended for admins — ensure the calling user has appropriate access before exposing it to general users.
+
+**Request body:**
+
+<ParamField body="text" type="string" required>
+  The announcement message text. Example: `"The system will be open for QA review from June 15 to June 25."`
+</ParamField>
+
+**Response:** `201 Created` on success. `500` if the notification could not be emitted.
+
+---
+
+## Real-time delivery
+
+In addition to REST polling, PRMS pushes notification events to connected clients using **Pusher**. The `socket-management` microservice (`shared/microservices/socket-management/`) manages the Pusher integration. When a result status changes or an announcement is created, the server emits a Pusher event on the user's private channel; the Angular client subscribes via `pusher-js`.
+
+<Note>
+The REST endpoints above reflect the persisted state of notifications. Real-time events arrive independently over the WebSocket channel. If a client misses a real-time event (for example, when offline), it can recover by polling `GET /api/notification/updates`.
+</Note>
+
+---
+
+## User notification settings
+
+Users can control which email notification channels are enabled on a per-initiative basis. These settings are stored in the `user_notification_settings` table and are checked by the email dispatch service before sending any outbound mail.
+
+### Get all settings
+
+```
+GET /api/user-notification-settings/all
+```
+
+Returns all notification preference rows for the authenticated user, covering every initiative they are a member of.
+
+**Auth:** JWT required (`auth` header).
+
+---
+
+### Get settings for an initiative
+
+```
+GET /api/user-notification-settings/:initiativeId
+```
+
+Returns the notification preferences for the authenticated user scoped to a specific initiative.
+
+<ParamField path="initiativeId" type="number" required>
+  ID of the initiative (Init, SGP, or Platform) to retrieve settings for.
+</ParamField>
+
+**Auth:** JWT required.
+
+**Errors:** `404` if the user or initiative is not found.
+
+---
+
+### Update settings
+
+```
+PATCH /api/user-notification-settings/update
+```
+
+Updates one or more notification preference records for the authenticated user. Accepts an array so multiple initiatives can be updated in a single request.
+
+**Auth:** JWT required.
+
+**Request body:** array of `UserNotificationSettingDto` objects.
+
+<ParamField body="initiative_id" type="number" required>
+  ID of the initiative (Init/SGP/Platform) this preference applies to.
+</ParamField>
+
+<ParamField body="email_notifications_contributing_request_enabled" type="boolean">
+  When `true`, the user receives email notifications for contribution requests on this initiative. Defaults to the current persisted value if omitted.
+</ParamField>
+
+<ParamField body="email_notifications_updates_enabled" type="boolean">
+  When `true`, the user receives email update notifications for this initiative. Defaults to the current persisted value if omitted.
+</ParamField>
+
+**Response:** `201` on success. `404` if the user or initiative is not found. `500` on internal error.
+
+<Note>
+Email dispatch in PRMS always checks user preferences before sending. Setting `email_notifications_contributing_request_enabled: false` for an initiative suppresses all contribution-request emails for that initiative, regardless of the triggering event.
+</Note>

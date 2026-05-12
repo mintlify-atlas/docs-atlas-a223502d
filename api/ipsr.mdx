@@ -1,0 +1,654 @@
+---
+title: "IPSR Innovation Package API endpoints — PRMS"
+description: "Author and manage IPSR innovation packages in PRMS: pathway steps, expert workshops, complementary innovations, ToC alignment, and package-level reporting."
+---
+
+The Innovation Package and Scaling Readiness (IPSR) module lets initiatives bundle innovation development results into structured **innovation packages** that are ready for wider deployment. An innovation package references one or more existing Innovation Development (`result_type_id = 7`) and Innovation Use (`result_type_id = 2`) results and layers on additional metadata: a four-step innovation pathway, complementary innovations, expert panel assessments, a package-level Theory of Change alignment, and geographic / partner coverage.
+
+All endpoints in this group require the `auth: <JWT>` header.
+
+## Authentication
+
+<Note>
+  All IPSR API endpoints enforce JWT authentication via the `auth` header. Requests without a valid token receive `401 Unauthorized`. Role enforcement at the handler level uses `@Roles` guards where applicable.
+</Note>
+
+```http
+auth: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Mount structure
+
+IPSR endpoints are split across two top-level paths:
+
+| Prefix | What it covers |
+|--------|---------------|
+| `/api/ipsr/*` | Innovation package authoring: header creation, pathway steps 1–4, experts, assessments, ToC links. |
+| `/api/ipsr-framework/*` | Cross-result IPSR framework reporting (aggregate views). |
+
+The sub-resource paths under `/api/ipsr/` are:
+
+| Sub-path | Module |
+|----------|--------|
+| `/api/ipsr/results-innovation-package/*` | Core innovation package header record |
+| `/api/ipsr/innovation-pathway/*` | Four-step innovation pathway |
+| `/api/ipsr/innovation-packaging-experts/*` | Expert panel expertise reference data |
+| `/api/ipsr/contributors/*` | Package→ToC result alignments |
+| `/api/ipsr/assessed-during-expert-workshop/*` | Workshop assessment options |
+| `/api/ipsr/results-innovation-packages-validation-module/*` | Package validation state |
+| `/api/ipsr/results-innovation-packages-enabler-type/*` | Enabler type reference data |
+
+---
+
+## Core package endpoints (`/api/ipsr/*`)
+
+### List all innovations
+
+Returns Innovation Development results available to link into a package. Optionally scoped to a list of initiative ids.
+
+```http
+POST /api/ipsr/all-innovations
+```
+
+**Request body**
+
+<ParamField body="initiativeId" type="number[]">
+  Array of initiative ids to restrict the innovation list. Omit or send an empty array to return all visible innovations.
+</ParamField>
+
+**Example**
+
+```bash
+curl -X POST https://prms.example.org/api/ipsr/all-innovations \
+  -H "auth: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "initiativeId": [12, 50] }'
+```
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of Innovation Development result summaries.
+
+  <Expandable title="Innovation fields">
+    <ResponseField name="id" type="number">Internal result id.</ResponseField>
+    <ResponseField name="result_code" type="number">Human-facing result code.</ResponseField>
+    <ResponseField name="title" type="string">Result title.</ResponseField>
+    <ResponseField name="result_type_id" type="number">Always `7` (Innovation Development) for this endpoint.</ResponseField>
+    <ResponseField name="status_id" type="number">Current status (1–7).</ResponseField>
+    <ResponseField name="version_id" type="number">Reporting phase id.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### Get single innovation
+
+Returns full data for a single Innovation Development result for preview before linking.
+
+```http
+GET /api/ipsr/innovation/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the Innovation Development result.
+</ParamField>
+
+---
+
+### List all innovation packages
+
+Returns all innovation packages visible to the authenticated user.
+
+```http
+GET /api/ipsr/all-innovation-packages
+```
+
+---
+
+### List innovation packages (filtered)
+
+The primary package list endpoint. Returns paginated, filterable innovation packages.
+
+```http
+GET /api/ipsr/all-innovation-packages/filter
+```
+
+<ParamField query="initiative" type="string">
+  Filter by initiative id or official code. Alias for `submitter_id`. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="phase" type="string">
+  Reporting phase (version) id. Alias for `version_id`. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="version_id" type="string">
+  Filter by phase/version id. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="result_type_id" type="string">
+  Filter by result type id. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="portfolio_id" type="string">
+  Filter by CLARISA portfolio id. Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="status_id" type="string">
+  Filter by result status id (1–7). Accepts comma-separated values.
+</ParamField>
+
+<ParamField query="page" type="number">
+  Page number (1-based). When provided alongside `limit`, the response includes a `meta` pagination block.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Items per page.
+</ParamField>
+
+**Example**
+
+```bash
+curl "https://prms.example.org/api/ipsr/all-innovation-packages/filter?\
+phase=34&status_id=1,2&page=1&limit=20" \
+  -H "auth: $TOKEN"
+```
+
+---
+
+### Get innovation package detail
+
+Returns the full detail view for an innovation package, including all linked results and step data.
+
+```http
+GET /api/ipsr/innovation-package-detail/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+---
+
+### Get IPSR Excel report
+
+Generates and returns the IPSR Excel report for a given set of packages.
+
+```http
+POST /api/ipsr/get/excel-report
+```
+
+<ParamField body="resultId" type="number" required>
+  Internal result id of the innovation package to export.
+</ParamField>
+
+---
+
+## Innovation package header (`/api/ipsr/results-innovation-package/*`)
+
+The header record holds the top-level metadata of the package—title, description, geographic scope, and cross-cutting tags.
+
+### Create package header
+
+```http
+POST /api/ipsr/results-innovation-package/create-header
+```
+
+<ParamField body="result_id" type="number" required>
+  The Innovation Development result id that seeds this package.
+</ParamField>
+
+<ParamField body="initiative_id" type="number" required>
+  Owning initiative id.
+</ParamField>
+
+<ParamField body="geo_scope_id" type="number" required>
+  CLARISA geographic scope identifier.
+</ParamField>
+
+<ParamField body="regions" type="array">
+  Array of `{ id: number, name: string }` region objects when the scope covers regions.
+</ParamField>
+
+<ParamField body="countries" type="array">
+  Array of `{ id: number, name: string }` country objects, each optionally with a `sub_national` array of sub-national scope records.
+</ParamField>
+
+**Response fields**
+
+<ResponseField name="response.id" type="number">
+  Internal id of the newly created innovation package record.
+</ResponseField>
+
+<ResponseField name="response.result_id" type="number">
+  The source Innovation Development result id.
+</ResponseField>
+
+---
+
+### Update general information
+
+Updates title, description, cross-cutting tag levels, KRS registration, and discontinuation state for an existing package.
+
+```http
+PATCH /api/ipsr/results-innovation-package/general-information/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+<ParamField body="title" type="string">
+  Package title.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Narrative description of the innovation package.
+</ParamField>
+
+<ParamField body="lead_contact_person" type="string">
+  Full name of the lead contact person.
+</ParamField>
+
+<ParamField body="gender_tag_level_id" type="number">
+  Gender tag level.
+</ParamField>
+
+<ParamField body="climate_change_tag_level_id" type="number">
+  Climate change tag level.
+</ParamField>
+
+<ParamField body="nutrition_tag_level_id" type="number">
+  Nutrition tag level.
+</ParamField>
+
+<ParamField body="environmental_biodiversity_tag_level_id" type="number">
+  Environmental / biodiversity tag level.
+</ParamField>
+
+<ParamField body="poverty_tag_level_id" type="number">
+  Poverty tag level.
+</ParamField>
+
+<ParamField body="is_krs" type="boolean">
+  Whether the package is registered in KRS.
+</ParamField>
+
+<ParamField body="krs_url" type="string">
+  KRS entry URL (required when `is_krs` is `true`).
+</ParamField>
+
+<ParamField body="is_discontinued" type="boolean" required>
+  Whether the package has been discontinued.
+</ParamField>
+
+---
+
+### Delete package
+
+Soft-deletes an innovation package (`is_active = false`).
+
+```http
+DELETE /api/ipsr/results-innovation-package/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id to delete.
+</ParamField>
+
+<ParamField query="justification" type="string">
+  Optional justification stored on the deletion audit record.
+</ParamField>
+
+---
+
+### Reference lookups
+
+```http
+GET /api/ipsr/results-innovation-package/active-backstopping
+GET /api/ipsr/results-innovation-package/consensus-initiative-work-package
+GET /api/ipsr/results-innovation-package/regional-integrated
+GET /api/ipsr/results-innovation-package/regional-leadership
+GET /api/ipsr/results-innovation-package/relevant-country
+GET /api/ipsr/results-innovation-package/unit-time
+```
+
+These endpoints return reference data used to populate dropdowns in the package general information form.
+
+---
+
+## Innovation pathway (`/api/ipsr/innovation-pathway/*`)
+
+The innovation pathway records the four-step journey from innovation development to scaled uptake. Each step is managed independently. All step endpoints require the result id of the parent innovation package.
+
+<AccordionGroup>
+  <Accordion title="Step 1 — Innovation readiness and use">
+    Step 1 captures the core innovation package composition: which results are included and the readiness / use scores from the IPSR framework.
+
+    **Get Step 1**
+    ```http
+    GET /api/ipsr/innovation-pathway/get-step-one/:resultId
+    ```
+
+    **Save Step 1**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-one/:resultId
+    ```
+
+    <ParamField path="resultId" type="number" required>
+      Internal result id of the innovation package.
+    </ParamField>
+
+    <ParamField body="readiness_level" type="number">
+      IPSR readiness level score (1–9).
+    </ParamField>
+
+    <ParamField body="use_level" type="number">
+      IPSR use level score (1–9).
+    </ParamField>
+
+    <ParamField body="experts" type="array">
+      Array of expert records with expertise and assessment scores.
+    </ParamField>
+
+    **Retrieve Action Area outcomes**
+
+    Retrieves Action Area outcome alignments for Step 1 from existing ToC data.
+    ```http
+    PATCH /api/ipsr/innovation-pathway/retrieve/aa-outcomes/:resultId
+    ```
+  </Accordion>
+
+  <Accordion title="Step 2 — Complementary innovations">
+    Step 2 links complementary innovations—existing PRMS results (types 2 or 7) that the package depends on.
+
+    **Get Step 2**
+    ```http
+    GET /api/ipsr/innovation-pathway/get/step-two/:resultId
+    ```
+
+    **Save Step 2 (bulk update)**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-two/:resultId
+    ```
+
+    <ParamField body="complementaryInovatins" type="array">
+      Array of complementary innovation link objects to save. Replaces existing associations.
+    </ParamField>
+
+    **Create a complementary innovation**
+
+    Creates a single new complementary innovation record linked to the package.
+    ```http
+    POST /api/ipsr/innovation-pathway/save/complementary-innovation/:resultId
+    ```
+
+    <ParamField body="result_id" type="number" required>
+      The PRMS result id to link as a complementary innovation.
+    </ParamField>
+
+    <ParamField body="complementary_innovation_enabler_type_id" type="number">
+      Enabler type classification for this complementary innovation.
+    </ParamField>
+
+    **Get complementary innovation by id**
+    ```http
+    GET /api/ipsr/innovation-pathway/get/complementary-innovation/:complementaryInnovationId
+    ```
+
+    **Update a complementary innovation**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/updated/complementary-innovation/:complementaryInnovationId
+    ```
+
+    **Delete (inactivate) a complementary innovation**
+    ```http
+    DELETE /api/ipsr/innovation-pathway/delete/complementary-innovation/:complementaryInnovationId
+    ```
+
+    **Reference data**
+
+    ```http
+    GET /api/ipsr/innovation-pathway/get/complementary-innovations
+    GET /api/ipsr/innovation-pathway/get/complementary-innovations-functions
+    ```
+  </Accordion>
+
+  <Accordion title="Step 3 — Expert workshop and assessment">
+    Step 3 records the expert workshop details and the scaling assessment made during the workshop.
+
+    **Get Step 3**
+    ```http
+    GET /api/ipsr/innovation-pathway/get/step-three/:resultId
+    ```
+
+    **Save Step 3**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-three/:resultId
+    ```
+
+    <ParamField path="resultId" type="number" required>
+      Internal result id of the innovation package.
+    </ParamField>
+
+    <ParamField body="result_ip_expert_workshop_organized" type="object">
+      Workshop metadata: date, location, number of participants.
+    </ParamField>
+
+    <ParamField body="assessed_during_expert_workshop" type="array">
+      Array of assessment option ids selected during the workshop.
+    </ParamField>
+
+    <ParamField body="consensus_initiative_work_package_id" type="number">
+      Consensus initiative work package reference.
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Step 4 — Scaling ambition and budget">
+    Step 4 captures scaling ambition, partner involvement, and budget linkage for the innovation package.
+
+    **Get Step 4**
+    ```http
+    GET /api/ipsr/innovation-pathway/get/step-four/:resultId
+    ```
+
+    **Save Step 4 (main)**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-four/:resultId
+    ```
+
+    <ParamField body="active_backstopping_id" type="number">
+      Backstopping support type identifier.
+    </ParamField>
+
+    <ParamField body="regional_leadership_id" type="number">
+      Regional leadership scope identifier.
+    </ParamField>
+
+    <ParamField body="regional_integrated_id" type="number">
+      Regional integration scope identifier.
+    </ParamField>
+
+    <ParamField body="relevant_country_id" type="number">
+      Relevant country classification identifier.
+    </ParamField>
+
+    **Save Step 4 partners**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-four/partners/:resultId
+    ```
+
+    <ParamField body="institutions" type="array">
+      Array of `{ institution_id: number, institution_roles_id: number }` partner objects.
+    </ParamField>
+
+    **Save Step 4 bilateral links**
+    ```http
+    PATCH /api/ipsr/innovation-pathway/save/step-four/bilaterals/:resultId
+    ```
+
+    <ParamField body="toc_id" type="number">
+      ToC node identifier for bilateral alignment.
+    </ParamField>
+
+    <ParamField body="donors" type="array">
+      Array of donor institution objects with contribution amounts.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Expert panel (`/api/ipsr/innovation-packaging-experts/*`)
+
+### List expertise options
+
+Returns the catalogue of expertise areas used to classify expert panel members.
+
+```http
+GET /api/ipsr/innovation-packaging-experts/expertises
+```
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of expertise objects.
+
+  <Expandable title="Expertise fields">
+    <ResponseField name="id" type="number">Expertise id.</ResponseField>
+    <ResponseField name="name" type="string">Expertise label shown in the UI.</ResponseField>
+    <ResponseField name="is_active" type="boolean">Whether this expertise option is currently active.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Workshop assessment reference data (`/api/ipsr/assessed-during-expert-workshop/*`)
+
+### List assessment options
+
+Returns all predefined assessment scenarios that can be selected to describe what was assessed during the expert workshop (Step 3).
+
+```http
+GET /api/ipsr/assessed-during-expert-workshop
+```
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of assessment option objects.
+
+  <Expandable title="Assessment option fields">
+    <ResponseField name="id" type="number">Assessment option id.</ResponseField>
+    <ResponseField name="description" type="string">Human-readable description of the assessment scenario.</ResponseField>
+    <ResponseField name="is_active" type="boolean">Whether this option is currently selectable.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Package→ToC alignment (`/api/ipsr/contributors/*`)
+
+Manages the Theory of Change alignment for an innovation package — linking the package to ToC nodes and recording contributing initiative data.
+
+### Save ToC alignment
+
+```http
+PATCH /api/ipsr/contributors/save/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+<ParamField body="toc_result_id" type="number" required>
+  The ToC result node id to align this package to.
+</ParamField>
+
+<ParamField body="initiative_id" type="number">
+  Contributing initiative id.
+</ParamField>
+
+<ParamField body="contributing_np_projects" type="array">
+  Non-pooled project contributions to this ToC alignment.
+</ParamField>
+
+### Get ToC alignment
+
+```http
+GET /api/ipsr/contributors/get/:resultId
+```
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+**Response fields**
+
+<ResponseField name="response" type="array">
+  Array of ToC alignment records for the package.
+
+  <Expandable title="ToC alignment fields">
+    <ResponseField name="result_id" type="number">Innovation package result id.</ResponseField>
+    <ResponseField name="toc_result_id" type="number">Linked ToC result node id.</ResponseField>
+    <ResponseField name="initiative_id" type="number">Contributing initiative id.</ResponseField>
+    <ResponseField name="is_active" type="boolean">Whether this alignment is active.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Enabler types reference data
+
+Returns the list of enabler type classifications used to categorise complementary innovations.
+
+```http
+GET /api/ipsr/results-innovation-packages-enabler-type
+```
+
+---
+
+## IPSR framework (`/api/ipsr-framework/*`)
+
+The `ipsr-framework` module provides aggregate views across all innovation packages for framework-level reporting. It is mounted at a separate top-level path from the package authoring endpoints.
+
+<Note>
+  The `/api/ipsr-framework/*` endpoints are intended for cross-result IPSR framework reporting consumers (PMU, platform reports). These endpoints aggregate data across multiple packages and are not used for individual package authoring.
+</Note>
+
+The available sub-routes are defined in `ipsr-framework.routes.ts` and cover aggregated geographic coverage, complementary innovation summaries, and initiative-level package tallies.
+
+---
+
+## Submission lifecycle
+
+IPSR innovation packages use the same submission service as standard results but via dedicated IPSR endpoints under `/api/results/submissions/`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PATCH | `/api/results/submissions/submit-ipsr/:resultId` | Submit an innovation package to the reporting cycle. |
+| PATCH | `/api/results/submissions/unsubmit-ipsr/:resultId` | Retract an innovation package submission. |
+
+<ParamField path="resultId" type="number" required>
+  Internal result id of the innovation package.
+</ParamField>
+
+Submission advances the package `status_id` toward `Submitted` (3) following QA approval. The package must pass validation before submission is accepted.
+
+---
+
+## Key relationships
+
+```
+Innovation Package (result_type_id = 10 / INNOVATION_USE_IPSR)
+├── links to Innovation Development result (result_type_id = 7)
+├── links to Innovation Use results (result_type_id = 2)
+├── has many Complementary Innovations (result_type_id = 11)
+│   └── each classified by enabler_type
+├── has many Expert Panel members
+│   └── each classified by expertise area
+├── Step 3: Expert Workshop assessment options
+├── Package→ToC alignments (via /api/ipsr/contributors/)
+├── Geographic coverage (countries, regions)
+└── Budget links (non-pooled projects)
+```

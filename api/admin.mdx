@@ -1,0 +1,388 @@
+---
+title: 'Administration API endpoints — roles, data, parameters'
+description: 'PRMS admin endpoints: Active Directory lookups, global parameters, soft-delete recovery, narratives, entity mappings, AI helpers, and dashboard aggregates.'
+keywords: ['admin', 'administration', 'global parameters', 'delete recover', 'narratives', 'AD users', 'entity map', 'AI', 'dashboard', 'PRMS']
+---
+
+The administration surfaces in PRMS span several independent API groups, each serving a distinct operational concern. Most endpoints require a valid JWT in the custom `auth` header (not an `Authorization: Bearer` prefix). Write operations on globally impactful resources additionally require the **Admin** (`RoleEnum.ADMIN = 1`) or **Lead** (`RoleEnum.LEAD = 3`) role enforced by `ValidRoleGuard`.
+
+<Warning>
+Admin endpoints that modify global parameters, delete results, or change runtime configuration have portfolio-wide or irreversible effects. Always verify the scope of an operation before calling these endpoints in production.
+</Warning>
+
+The role hierarchy is numeric — lower values represent greater privilege:
+
+| Role | ID | Scope |
+|---|---|---|
+| Admin | 1 | Full administrative access across all modules |
+| Lead | 3 | Initiative lead; limited admin operations |
+| Co-Lead | 4 | Co-lead on an initiative |
+| Coordinator | 5 | Initiative coordinator |
+| Member | 6 | Standard initiative member |
+| Guest | 2 | Read-only access |
+| Action Area Global Director | 7 | Action area oversight |
+| Action Area Coordinator | 8 | Action area coordination |
+
+`ValidRoleGuard` authorizes a request when `userRole <= requiredRole` — a user with a lower ID (higher privilege) always satisfies a role requirement for a higher ID.
+
+---
+
+<AccordionGroup>
+
+<Accordion title="Active Directory users — /api/ad-users/*">
+
+The `ad-users` endpoints expose the CGIAR Active Directory via a local cache backed by `ldapts`. Results are returned from the cache first; AD is queried only on a cache miss. Use these endpoints to look up and validate users before assigning them roles on initiatives.
+
+**Auth:** JWT required. No additional role guard — all authenticated users may call these endpoints.
+
+---
+
+### Search users
+
+```
+GET /api/ad-users/search
+```
+
+Searches for users by name, email, username, title, department, or company. The query is applied against the local cache first; an AD lookup is performed if the cache has no matching results.
+
+<ParamField query="query" type="string" required>
+  Search string. Minimum 2 characters. Searches across name, email, username, title, department, and company fields.
+
+  Example: `john.doe`
+</ParamField>
+
+**Response:** `200` with a `SearchUsersResponseDto` containing matched user records. `400` if `query` is shorter than 2 characters.
+
+---
+
+### Validate an email address
+
+```
+GET /api/ad-users/validate
+```
+
+Checks whether an email address exists in Active Directory and returns the user's details if found. Use this to confirm a lead contact person before saving their details to a result.
+
+<ParamField query="email" type="string" required>
+  Email address to validate. Example: `john.doe@cgiar.org`
+</ParamField>
+
+**Response:** `200` with a `ValidateEmailResponseDto`. `400` if the `email` parameter is missing.
+
+</Accordion>
+
+<Accordion title="Global parameters — /api/global-parameters/*">
+
+Global parameters are runtime-tunable key-value pairs stored in the `global_parameters` table. They control platform-wide behaviour such as feature flags, thresholds, and system text. Values are cached in-process by `GlobalParameterCacheService`; writing a parameter via `PUT /api/global-parameters/update/variable` invalidates the cache.
+
+**Auth:** JWT required for all endpoints. Write operations should be restricted to admin users — there is no explicit role guard on these endpoints, so callers must ensure access control at the application level.
+
+---
+
+### List all parameters
+
+```
+GET /api/global-parameters
+```
+
+Returns every global parameter record including `id`, `name`, `description`, `value`, and `global_parameter_category_id`.
+
+---
+
+### Get parameters by category
+
+```
+GET /api/global-parameters/category/:categoryId
+```
+
+Returns all parameters belonging to a given category.
+
+<ParamField path="categoryId" type="number" required>
+  Category ID from the `global_parameter_category` table.
+</ParamField>
+
+---
+
+### Get platform global variables
+
+```
+GET /api/global-parameters/platform/global/variables
+```
+
+Returns the subset of global parameters that apply across the entire PRMS platform. Use this endpoint to retrieve configuration values needed by the frontend on startup.
+
+---
+
+### Get parameter by name
+
+```
+GET /api/global-parameters/name/:name
+```
+
+Looks up a single parameter by its unique name (up to 64 characters, unique index in the database).
+
+<ParamField path="name" type="string" required>
+  Exact parameter name as stored in `global_parameters.name`.
+</ParamField>
+
+---
+
+### Update a parameter
+
+```
+PUT /api/global-parameters/update/variable
+```
+
+Updates the `value` of an existing global parameter and invalidates the in-process cache. The calling user is recorded in the audit columns.
+
+<ParamField body="name" type="string" required>
+  Name of the parameter to update.
+</ParamField>
+
+<ParamField body="value" type="string" required>
+  New value to persist. All parameter values are stored as text regardless of their semantic type.
+</ParamField>
+
+<Warning>
+Parameter changes take effect immediately across all running server instances (the cache is invalidated synchronously). Incorrect values can break platform-wide features. Test in a non-production environment first.
+</Warning>
+
+</Accordion>
+
+<Accordion title="Delete and recover data — /api/manage-data/*">
+
+The `manage-data` endpoints provide soft-delete and result-type migration operations. Deletion is tracked in the `result_deletion_audit` table; recovery is possible by reversing the soft-delete flag. These endpoints are restricted to admin and PMU users.
+
+**Auth:** JWT required. Admin or lead access expected — `ValidRoleGuard` is applied per operation.
+
+---
+
+### Soft-delete a result
+
+```
+DELETE /api/manage-data/result/:id/delete
+```
+
+Marks a result as deleted (`is_active = false`) and creates an audit record in `result_deletion_audit`. The result is hidden from all standard queries but remains in the database and can be recovered.
+
+<ParamField path="id" type="number" required>
+  Result ID to soft-delete.
+</ParamField>
+
+<ParamField query="justification" type="string">
+  Optional free-text reason for deletion. Stored in the audit record.
+</ParamField>
+
+<Warning>
+Although soft-deletes are technically reversible, all linked data (contributions, evidence, partners, budget entries) is also deactivated. Recovery requires a manual re-activation flow — contact the PMU team before proceeding.
+</Warning>
+
+---
+
+### Change a result type
+
+```
+PATCH /api/manage-data/change/result/:id
+```
+
+Migrates a result from one type/level combination to another. This operation re-classifies the result and may clear type-specific data that is incompatible with the new type. A justification is required.
+
+<ParamField path="id" type="number" required>
+  Result ID to reclassify.
+</ParamField>
+
+**Request body:**
+
+<ParamField body="result_level_id" type="number" required>
+  Target result level ID (for example Output, Outcome).
+</ParamField>
+
+<ParamField body="result_type_id" type="number" required>
+  Target result type ID matching `ResultTypeEnum` (for example `1` = Policy Change, `7` = Innovation Development).
+</ParamField>
+
+<ParamField body="justification" type="string" required>
+  Reason for the type change. Stored in the audit trail.
+</ParamField>
+
+<ParamField body="new_name" type="string">
+  Optional new title for the result after reclassification.
+</ParamField>
+
+<Warning>
+Changing a result type is not fully reversible. Type-specific fields populated under the old type may be permanently cleared. Confirm with the result owner before proceeding.
+</Warning>
+
+</Accordion>
+
+<Accordion title="Global narratives — /api/global-narratives/*">
+
+Global narratives are PMU-curated text blocks stored in the `global_narratives` table. Each narrative has a unique `name` slug and a `value` field containing the narrative content. These are read by the frontend to populate shared narrative sections in reports.
+
+**Auth:** JWT required. These are read-only endpoints — write access to narratives must be performed directly by the PMU team via database tooling or a separate admin interface.
+
+---
+
+### Get narrative by ID
+
+```
+GET /api/global-narratives/:id
+```
+
+Returns a single global narrative by its primary key.
+
+<ParamField path="id" type="number" required>
+  Narrative ID (`global_narratives.id`).
+</ParamField>
+
+**Response fields:**
+
+<ResponseField name="id" type="number">
+  Primary key.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Unique slug identifying the narrative block (up to 255 characters).
+</ResponseField>
+
+<ResponseField name="value" type="string">
+  Full narrative text content.
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether the narrative is active. Inactive narratives are excluded from standard queries.
+</ResponseField>
+
+<ResponseField name="created_date" type="string">
+  ISO timestamp of creation.
+</ResponseField>
+
+<ResponseField name="last_updated_date" type="string">
+  ISO timestamp of last modification.
+</ResponseField>
+
+---
+
+### Get narrative by name
+
+```
+GET /api/global-narratives/name/:name
+```
+
+Looks up a narrative by its unique name slug. Prefer this endpoint when the frontend references narratives by a known identifier rather than a database ID.
+
+<ParamField path="name" type="string" required>
+  Unique name slug for the narrative.
+</ParamField>
+
+</Accordion>
+
+<Accordion title="Initiative entity map — /api/initiatives-entity/*">
+
+The initiative entity map defines which organizational entities (for example, centers or partners) are associated with each CGIAR initiative. These mappings govern contribution eligibility and data access rules across the platform.
+
+**Auth:** JWT required. The calling user's token is used for audit purposes on write operations.
+
+---
+
+### Get all mappings
+
+```
+GET /api/initiatives-entity
+```
+
+Returns all current initiative-to-entity mappings, including the related initiative and entity objects.
+
+**Response:** `200` with an array of `InitiativeEntityMap` records containing each mapping's `initiativeId`, `entityIds`, and related objects.
+
+---
+
+### Link an initiative to entities
+
+```
+POST /api/initiatives-entity/link
+```
+
+Creates or updates the entity associations for an initiative. Accepts a single initiative ID and a list of entity IDs; the service saves the full set of mappings atomically.
+
+**Auth:** JWT required. User token is recorded in audit columns.
+
+**Request body:**
+
+<ParamField body="initiativeId" type="number" required>
+  ID of the CGIAR initiative to configure. Example: `1`
+</ParamField>
+
+<ParamField body="entityIds" type="number[]" required>
+  Array of entity IDs to associate with the initiative. Example: `[30, 32, 45]`
+</ParamField>
+
+**Response:** `201` with the saved mapping records.
+
+</Accordion>
+
+<Accordion title="AI helpers — /api/ai/*">
+
+The `ai` endpoints provide AI-assisted authoring support for result descriptions and other free-text fields. They are gated by JWT authentication and forward the calling user's token to the underlying AI service.
+
+**Auth:** JWT required. The `@UserToken()` decorator extracts the user context from the `auth` header and passes it downstream. No additional role guard is applied — all authenticated users may call these endpoints.
+
+<Note>
+AI helper endpoints consume the user's session token when communicating with the AI backend. Do not expose these endpoints to unauthenticated clients. Response quality depends on the quality of the input provided by the caller.
+</Note>
+
+Refer to the `api/ai/` module source and its `dto/responses/` directory for the exact request and response shapes for each AI operation, as the surface evolves with AI model iterations.
+
+</Accordion>
+
+<Accordion title="Home and dashboard — /api/home/*">
+
+The home endpoints return landing-page aggregates used to populate the PRMS dashboard. They provide submission progress metrics, result counts by phase and status, and other portfolio-level summaries.
+
+**Auth:** JWT required. No additional role restriction — all authenticated users may access dashboard data.
+
+These endpoints are intentionally read-only and do not accept write parameters. The data is computed from the current state of results in the active phase and returned as a structured summary object.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Common patterns
+
+### Authentication header
+
+All admin endpoints use the same custom authentication header:
+
+```http
+auth: <JWT token>
+```
+
+Do not use `Authorization: Bearer`. The `JwtMiddleware` explicitly rejects `Basic` and `Bearer` schemes.
+
+### Response envelope
+
+Most admin endpoints wrap their response in the standard PRMS envelope via `ResponseInterceptor`:
+
+```json
+{
+  "response": { ... },
+  "statusCode": 200,
+  "message": "...",
+  "timestamp": "2024-06-15T12:00:00.000Z",
+  "path": "/api/global-parameters"
+}
+```
+
+Endpoints that return raw arrays (such as the initiative entity map) pass through the interceptor unchanged.
+
+### Error responses
+
+| Status | Meaning |
+|---|---|
+| `400` | Validation error or missing required parameter |
+| `401` | Missing or expired JWT |
+| `403` | Authenticated but insufficient role |
+| `404` | Requested resource not found |
+| `500` | Internal server error (check server logs) |
